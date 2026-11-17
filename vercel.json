@@ -1,0 +1,26 @@
+{
+  "framework": null,
+  "buildCommand": "SVAVEDA_VERCEL_BUILD=1 npm run build",
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/api/erp?route=/"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "/api/erp?route=/api/:path*"
+    }
+  ],
+  "functions": {
+    "api/erp.js": {
+      "includeFiles": "dist/server/**"
+    }
+  },
+  "outputDirectory": "dist/public",
+  "crons": [
+    {
+      "path": "/api/sheets/cron",
+      "schedule": "15 2 * * *"
+    }
+  ]
+}
