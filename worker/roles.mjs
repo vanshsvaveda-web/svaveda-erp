@@ -16,13 +16,17 @@ async function accessFor(request, db) {
     ? await db.prepare('SELECT workspace_id, revision, payload FROM workspace_state WHERE workspace_id = ?').bind(user).first()
     : await db.prepare("SELECT workspace_id, revision, payload FROM workspace_state WHERE json_extract(payload, '$.orgKey') = 'svaveda' LIMIT 1").bind().first();
   const state = row ? JSON.parse(row.payload) : null;
-  const seats = state?.seats || emptySeats();
+  const seats = Array.isArray(state?.seats) ? state.seats.filter(Boolean) : emptySeats();
+  for(const role of new Set(seatTypes)){
+    const missing=3-seats.filter(seat=>seat.role===role).length;
+    for(let i=0;i<missing;i++)seats.push({role,name:'',email:''});
+  }
   const seat = admin ? {role:'Super Admin',name:'Vansh',email} : seats.find(item => item.email === email);
   return seat ? {...seat,user,workspace:row?.workspace_id || user,revision:row?.revision || 0,state,seats} : null;
 }
 
-function validateSeats(seats, adminEmail) {
-  if (!Array.isArray(seats) || seats.length !== seatTypes.length) throw Error('Configure all six team seats.');
+function validateSeats(seats, adminEmail, existingSeats) {
+  if (!Array.isArray(seats) || seats.length !== existingSeats.length) throw Error('Reload Roles & Access before saving seats.');
   const emails = new Set([adminEmail]);
   const names = new Set(['vansh']);
   return seats.map((seat,i) => {
@@ -32,12 +36,13 @@ function validateSeats(seats, adminEmail) {
     if (email && (!name || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || emails.has(email))) throw Error('Use a unique valid sign-in email and display name.');
     if (name) names.add(name.toLowerCase());
     if (email) emails.add(email);
-    return {role:seatTypes[i],name,email};
+    return {role:existingSeats[i].role,name,email};
   });
 }
 
 function scopedState(access) {
-  if (!access.state || access.role === 'Super Admin') return access.state;
+  if (!access.state) return access.state;
+  if (access.role === 'Super Admin') return {...access.state,seats:access.seats};
   const {seats,orgKey,attendanceByUser,messages,sheetLink,sheetSyncedAt,sheetQueue,...visible} = access.state;
   visible.messages = [];
   visible.attendance = attendanceByUser?.[access.user] || {};

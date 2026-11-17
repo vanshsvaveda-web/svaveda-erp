@@ -38,6 +38,7 @@ async function save(command){
  revision=result.revision;
  if(result.data)data=result.data;
  committed=structuredClone(data);
+ setTimeout(processSheetQueue,0);
 }
 async function load(){
  try{
@@ -55,7 +56,7 @@ async function load(){
   if(isEmployee()&&page==='Overview')page='My Day';
   render();
   void refreshAlerts();
-  void autoPullSheet();
+  void processSheetQueue().finally(autoPullSheet);
  }catch(error){
   ui.innerHTML='<div class="panel"><div class="empty">'+e(error.message)+' <button id="retry">Retry</button></div></div>';
   $('#retry').onclick=load;
@@ -316,8 +317,8 @@ function importCsv(text,source='Sheet CSV'){
  if(rowIndex<0)throw Error('No lead headers found in the first 35 rows. Open the leads tab itself and copy its link. Put Name (Expert) and Contact Number (General) on the same row.');
  const headers=rows[rowIndex].map(value=>value.trim()), heads=headers.map(headerKey);
  const find=(...keys)=>keys.map(key=>heads.indexOf(key)).find(index=>index>=0)??-1;
- const columns={name:find(...names),phone:find(...phones),owner:find('assignedto','owner','assignee','teammember'),action:find('nextaction','todo','task','action'),due:find('followupdate','duedate','nextfollowup'),status:find('leadstatus','pipelinestatus','communicationstage','status'),area:find('specialization','area','keyword'),priority:find('priority'),instructions:find('instructions','todo'),note:find('remarks','notes')};
- const byPhone=new Map(data.leads.map(lead=>[normalized(lead.phone),lead]));
+ const columns={name:find(...names),phone:find(...phones),owner:find('assignedto','owner','assignee','teammember'),action:find('nextaction','todo','task','action'),due:find('followupdate','duedate','nextfollowup'),status:find('status'),sheetStage:find('leadstatus','communicationstage'),sheetPipeline:find('pipelinestatus'),sheetInterest:find('interest'),method:find('lastcontactmethod','contactmethod'),area:find('specialization','area','keyword'),priority:find('priority'),instructions:find('instructions','todo'),note:find('remarks','notes')};
+ const byPhone=new Map(data.leads.flatMap(lead=>[[normalized(lead.phone),lead],...(lead.sheetSnapshot?.phone?[[normalized(lead.sheetSnapshot.phone),lead]]:[])]));
  let added=0,skipped=0,updated=0;
  const seen=new Set();
  for(const row of rows.slice(rowIndex+1)){
@@ -341,12 +342,13 @@ function importCsv(text,source='Sheet CSV'){
  if(fields.owner&&!fields.action)fields.action='Initial call';
  if(fields.owner&&!fields.due)fields.due=day();
  if(existing){
+  if(data.sheetQueue?.[existing.id]){skipped++;continue;}
   const previous=existing.sheetSnapshot;
   for(const [key,value] of Object.entries(fields)){
    if(previous&&columns[key]>=0&&existing[key]===previous[key]&&value!==previous[key])existing[key]=value;
   }
   if(previous&&Object.keys(fields).some(key=>previous[key]!==fields[key])){makeTask(existing);updated++}
-  existing.sheetSnapshot=fields;
+  existing.sheetSnapshot={...fields};
   existing.sheetFields=sheetFields;
  }else{
   const lead={id:id(),source,sheetFields,...fields};
@@ -361,17 +363,14 @@ function importCsv(text,source='Sheet CSV'){
 }
 document.addEventListener('change',ev=>{const key=ev.target.dataset.check;if(key){ev.target.checked?selected.add(key):selected.delete(key);render()}});
 document.addEventListener('click',async ev=>{
- const b=ev.target.closest('[data-act]');if(!b||busy)return;
+ const b=ev.target.closest('[data-act]');if(!b)return;
+ if(busy){if(b.dataset.act==='lead-contact')ev.preventDefault();return;}
  const {act,key}=b.dataset;
- if(act==='sheet-write-lead'&&isSuperAdmin()){
+ if(act==='lead-contact'){
+  if(ev.defaultPrevented)return;
   busy=true;
-  try{
-   const response=await fetch('/api/sheets/write-lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:key})});
-   const result=await response.json();
-   if(!response.ok)throw Error(result.error||'Sheet update failed.');
-   await updateWorkspace();
-   notify(result.created?'Lead added to Sheet':result.updatedCells?result.updatedCells+' Sheet cells updated':'Sheet already matches the saved changes');
-  }catch(error){notify(error.message)}
+  try{await save({type:'lead-contact',id:key,method:b.dataset.method})}
+  catch(error){notify('Contact was not recorded: '+error.message)}
   finally{busy=false}
   return;
  }
@@ -440,11 +439,15 @@ document.addEventListener('click',async ev=>{
  }
  if(act==='lead'){
  const l=data.leads.find(x=>x.id===key)||{id:id(),status:'New',source:'Manual'};
- const phone=normalized(l.phone||'');
- const links=phone&&!['Do not contact','Invalid number'].includes(l.status)?`<p><a href="tel:${e(l.phone.replace(/[^+\d]/g,''))}">Call</a> · <a target="_blank" rel="noopener noreferrer" href="https://wa.me/${phone.length===10?'91'+phone:phone}">Open WhatsApp</a></p>`:'';
+ const links=l.phone?'<p>'+leadContact(l)+'</p>':'';
  const history=(l.history||[]).map(h=>`<p>${e([h.date,h.actor,h.method,h.status,h.note].filter(Boolean).join(' · '))}</p>`).join('');
  if(isEmployee()){readRecord(e(l.name),links+'<p>'+e([l.status,l.action,l.due].filter(Boolean).join(' · '))+'</p><p>'+e(l.instructions)+'</p>'+leadSheetDetails(l)+history);return}
- form(key?'Edit expert lead':'Add expert lead',links+(key&&data.sheetLink&&isSuperAdmin()?btn('Update Sheet','sheet-write-lead',l.id):'')+input('Name','name',l.name,'text',true)+input('Phone','phone',l.phone,'tel',true)+input('Specialization','area',l.area)+select('Stage','status',options(statuses,l.status))+select('Assigned to','owner',nameOptions(l.owner))+input('Next action','action',l.action)+input('Due date','due',l.due,'date')+area('Instructions','instructions',l.instructions)+leadSheetDetails(l)+history,'Save lead',v=>{if(v.owner&&!v.action)v.action='Initial call';if(v.owner&&!v.due)v.due=day();setLead(l,v);notify('Lead saved')});
+ form(key?'Edit expert lead':'Add expert lead',input('Name','name',l.name,'text',true)+input('Phone','phone',l.phone,'tel',true)+input('Specialization','area',l.area)+select('ERP stage','status',options(statuses,l.status))+select('Assigned to','owner',nameOptions(l.owner))+input('Next action','action',l.action)+input('Due date','due',l.due,'date')+area('Instructions','instructions',l.instructions)+
+ (data.sheetLink||l.sheetSnapshot?select('Lead Status','sheetStage',options(['','Followup','Communication','Call Confirmed','Call Concluded'],l.sheetStage))+
+ select('Pipeline Status','sheetPipeline',options(['','Hot','In Progress','Cold'],l.sheetPipeline))+
+ select('Interest','sheetInterest',options(['','Yes','No','Maybe'],l.sheetInterest)):'')+leadSheetDetails(l)+history,
+ 'Save lead',v=>{if(v.owner&&!v.action)v.action='Initial call';if(v.owner&&!v.due)v.due=day();setLead(l,v)});
+
  }
  if(act==='assign'){
  const leads=data.leads.filter(l=>key?l.id===key:selected.has(l.id));
@@ -635,7 +638,7 @@ function leadContact(lead){
  const phone=normalized(lead.phone||'');
  if(!phone)return '';
  const tel=(lead.phone||'').replace(/[^+\d]/g,'');
- return `<a class="contact-action" href="tel:${e(tel)}">Call</a><a class="contact-action" target="_blank" rel="noopener noreferrer" href="https://wa.me/${phone.length===10?'91'+phone:phone}">WhatsApp</a>`;
+ return `<a class="contact-action" data-act="lead-contact" data-key="${e(lead.id)}" data-method="Call" href="tel:${e(tel)}">Call</a><a class="contact-action" data-act="lead-contact" data-key="${e(lead.id)}" data-method="WhatsApp" target="_blank" rel="noopener noreferrer" href="https://wa.me/${phone.length===10?'91'+phone:phone}">Text on WhatsApp</a>`;
 }
 
 function taskChecklist(task){
@@ -720,5 +723,5 @@ $('#desktop-alerts').onclick=async()=>{
  }
  page='Inbox';render();
 };
-setInterval(()=>{void refreshAlerts();void autoPullSheet()},60000);
+setInterval(()=>{void refreshAlerts();void processSheetQueue().finally(autoPullSheet)},60000);
 load();

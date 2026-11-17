@@ -11,7 +11,18 @@ function audit(state,access,action,subject) {
 
 function operate(access,state,command) {
   const employee = access.role === 'Employee';
-  if (command.type === 'lead-outcome') {
+  if (command.type === 'lead-contact') {
+    const lead = state.leads.find(item=>item.id===command.id && (!employee || item.owner===access.name));
+    if (!lead || ['Do not contact','Invalid number'].includes(lead.status) ||
+        !['Call','WhatsApp'].includes(command.method)) throw Error('Contact action is unavailable.');
+    lead.method=command.method;
+    if (!lead.sheetStage || lead.sheetStage==='Followup') lead.sheetStage='Communication';
+    if (lead.status==='New') lead.status='Contacted';
+    (lead.history ||= []).unshift({date:todayIST(),status:lead.status,actor:access.name,method:command.method,
+      note:command.method==='Call'?'Opened call dialer':'Opened WhatsApp conversation'});
+    lead.history=lead.history.slice(0,50);
+    audit(state,access,'Opened '+command.method,lead.name);
+  } else if (command.type === 'lead-outcome') {
     const lead = state.leads.find(item => item.id === command.id && (!employee || item.owner === access.name));
     if (!lead) throw Error('Lead is unavailable.');
     if (lead.status === 'Do not contact' && employee) throw Error('This lead has opted out.');
@@ -29,6 +40,7 @@ function operate(access,state,command) {
     Object.assign(lead,{status:command.status,note,due,action:due?'Follow-up':''});
     const method=['Call','WhatsApp','Email','Instagram','Other'].includes(command.method)?command.method:'';
     if(method)lead.method=method;
+    if(command.status==='Follow-up')lead.sheetStage='Followup';
     (lead.history ||= []).unshift({date:todayIST(),status:lead.status,note,actor:access.name,method});
     if (due) state.tasks.unshift({id:crypto.randomUUID(),title:'Follow-up · '+lead.name,owner:lead.owner,due,priority:lead.priority||'Medium',status:'To do',lead:lead.id,note});
     audit(state,access,'Logged lead outcome',lead.name);

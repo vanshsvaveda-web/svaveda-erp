@@ -50,14 +50,15 @@ async function workspace(request, env) {
   }
   if (revision !== access.revision) return json({ error: 'The workspace changed in another tab. Reload to get the latest records.' }, 409);
   if (!command && access.role !== 'Employee') access.priorLeadOwners = new Map((access.state?.leads||[]).map(lead=>[lead.id,lead.owner||'']));
-  const priorLeads = new Map((access.state?.leads||[]).map(lead=>[lead.id,lead]));
+  const priorLeads = new Map((access.state?.leads||[]).map(lead=>[lead.id,{...lead}]));
   let next;
   if (command) {
     next = access.state || {...data,seats:access.seats,orgKey:'svaveda'};
     try {operate(access,next,command)} catch (error) {return json({error:error.message},400)}
   } else if (access.role === 'Super Admin') {
     try {
-      const seats = validateSeats(data.seats || access.seats, access.email);
+      const seats = data.seats && JSON.stringify(data.seats)!==JSON.stringify(access.seats)
+        ? validateSeats(data.seats, access.email, access.seats) : access.seats;
       next = {...data,seats,orgKey:'svaveda',attendanceByUser:access.state?.attendanceByUser || {},requests:access.state?.requests||[],activity:access.state?.activity||[]};
     } catch (error) {
       return json({ error:error.message }, 400);
@@ -75,14 +76,16 @@ async function workspace(request, env) {
   }
   next.sheetQueue=Object.assign(Object.create(null),access.state?.sheetQueue);
   if(next.sheetLink!==access.state?.sheetLink)next.sheetQueue=Object.create(null);
-  if(next.sheetLink&&!command&&access.role!=='Employee'){
+  if(next.sheetLink){
     for(const lead of next.leads){
       if(typeof lead.id!=='string'||!lead.id||lead.id.length>128)continue;
       const prior=priorLeads.get(lead.id);
       if(!prior&&lead.source==='Google Sheets')continue;
       if(prior&&JSON.stringify(prior.sheetSnapshot)!==JSON.stringify(lead.sheetSnapshot))continue;
-      if(Object.keys(sheetWriteFields).some(field=>lead[field]!==prior?.[field])){
-        next.sheetQueue[lead.id]={attempts:0,nextAt:0};
+      const changed=Object.keys(sheetWriteFields).filter(field=>lead[field]!==prior?.[field]);
+      if(changed.length){
+        const pending=next.sheetQueue[lead.id]?.fields;
+        next.sheetQueue[lead.id]={attempts:0,nextAt:0,fields:[...new Set([...(pending||[]),...changed])]};
       }
     }
   }
@@ -101,7 +104,13 @@ export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
     if (path === '/api/sheets/cron' && env.SHEET_CRON_AUTHORIZED === true) return runScheduledSheetSync(env);
-    if (path === '/api/sheets/write-lead') return writeSheetLead(request,env);
+    if (path === '/api/sheets/process') {
+      if (request.method !== 'POST' || request.headers.get('Origin') !== new URL(request.url).origin)
+        return json({error:'Invalid sync request.'},403);
+      const access=await accessFor(request,env.DB);
+      if (!access?.state) return json({error:'Workspace seat required.'},403);
+      return runScheduledSheetSync(env,access.workspace);
+    }
     if (path === '/api/sheets/preview') return previewSheet(request,env);
     if (path === '/api/workspace' || path === '/api/messages' || path === '/api/messages/join' || path.startsWith('/api/messages/files/')) {
       try {

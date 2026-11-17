@@ -125,7 +125,20 @@ function operationsAction(act,key){
  }
 }
 
-let sheetError='', nextSheetPull=0;
+let sheetError='', sheetWriteError='', nextSheetPull=0;
+async function processSheetQueue(){
+ if(!data || busy || modal.open || (isSuperAdmin()&&!Object.keys(data.sheetQueue||{}).length))return;
+ busy=true;
+ try{
+  const response=await fetch('/api/sheets/process',{method:'POST'});
+  if(response.status===409)return;
+  const result=await response.json();
+  if(!response.ok)throw Error(result.error||'Unable to process Sheet updates.');
+  if(result.processed)await updateWorkspace();
+  sheetWriteError=result.failed?'Some Sheet changes are waiting to retry.':'';
+ }catch(error){sheetWriteError=error.message;}
+ finally{busy=false;updateSyncLabel()}
+}
 async function pullSheet(link,connecting=false){
  const batches=[];
  let startRow=1;
@@ -160,12 +173,12 @@ async function autoPullSheet(){
 }
 function updateSyncLabel(){
  const label=$('#sheet-status');
- if(label)label.textContent=sheetError?'Sync needs attention: '+sheetError:data.sheetSyncedAt?
+ if(label)label.textContent=sheetWriteError?'Sync needs attention: '+sheetWriteError:sheetError?'Sync needs attention: '+sheetError:data.sheetSyncedAt?
   'Last synced '+new Date(data.sheetSyncedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):'Waiting for first sync';
 }
 function renderIntegrations(){
  ui.innerHTML=title('Settings','Manage access, Google Sheets, and workspace exports.')+
- panel('Google Sheets',`<form id="sheet-link" class="item">${input('Google Sheet link','link',data.sheetLink,'url',true)}<p>Use Name (Expert) and Contact Number (General), or Name and Phone, on the same header row near the top. New contacts sync automatically while a Super Admin has the ERP open.</p><button class="primary">${data.sheetLink?'Change connection':'Connect Sheet'}</button> ${data.sheetLink?btn('Disconnect','sheet-disconnect'):''}<p id="sheet-status" role="status"></p></form>`)+
+ panel('Google Sheets',`<form id="sheet-link" class="item">${input('Google Sheet link','link',data.sheetLink,'url',true)}<p>Use Name (Expert) and Contact Number (General), or Name and Phone, on the same header row near the top. New contacts pull automatically while a Super Admin has the ERP open. Saved lead changes are queued for write-back.</p><button class="primary">${data.sheetLink?'Change connection':'Connect Sheet'}</button> ${data.sheetLink?btn('Disconnect','sheet-disconnect'):''}<p id="sheet-status" role="status"></p></form>`)+
  panel('CSV and backup',`<div class="item"><div class="actions">${btn('Import Sheet CSV','import')}${btn('Export leads CSV','export')}${btn('Download ERP records','ops-backup')}</div></div>`);
  updateSyncLabel();
  $('#sheet-link').onsubmit=async event=>{

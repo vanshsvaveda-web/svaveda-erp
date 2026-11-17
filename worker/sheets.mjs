@@ -83,7 +83,12 @@ const sheetWriteFields = {
   owner:['teammember','assignedto','assignee','owner'],
   action:['nextaction','task','todo'],
   due:['followupdate','nextfollowup','duedate'],
-  status:['pipelinestatus','leadstatus','status'],
+  status:['status'],
+  sheetStage:['leadstatus','communicationstage'],
+  sheetPipeline:['pipelinestatus'],
+  sheetInterest:['interest'],
+  area:['specialization','area','keyword'],
+  method:['lastcontactmethod','contactmethod'],
   instructions:['instructions'],
   note:['remarks','notes']
 };
@@ -95,22 +100,16 @@ function sheetColumn(index) {
   return result;
 }
 
-async function writeSheetLead(request,env) {
-  const access=await accessFor(request,env.DB);
-  if(access?.role!=='Super Admin')return json({error:'Only the Super Admin can write to the connected Sheet.'},403);
-  if(request.method!=='POST')return json({error:'Method not allowed.'},405);
-  if(request.headers.get('Origin')!==new URL(request.url).origin||!request.headers.get('Content-Type')?.startsWith('application/json'))return json({error:'Invalid Sheet request.'},403);
-  const body=await readPayload(request).catch(()=>null);
-  if(typeof body?.id!=='string')return json({error:'A lead ID is required.'},400);
-  return syncSheetLead(access,env,body.id);
-}
-
-async function runScheduledSheetSync(env){
+async function runScheduledSheetSync(env,workspace){
+  if(!env.GOOGLE_SHEETS_SERVICE_ACCOUNT)
+    return json({error:'Google Sheets write-back needs a configured service account.'},503);
   const deadline=Date.now()+25000;
   const outcome={processed:0,succeeded:0,failed:0};
   const attempted=new Set();
   while(outcome.processed<5&&Date.now()<deadline-5000){
-    const row=await env.DB.prepare("SELECT workspace_id, revision, payload FROM workspace_state WHERE json_extract(payload, '$.orgKey') = 'svaveda' LIMIT 1").bind().first();
+    const row=workspace
+      ? await env.DB.prepare('SELECT workspace_id, revision, payload FROM workspace_state WHERE workspace_id = ?').bind(workspace).first()
+      : await env.DB.prepare("SELECT workspace_id, revision, payload FROM workspace_state WHERE json_extract(payload, '$.orgKey') = 'svaveda' LIMIT 1").bind().first();
     if(!row)break;
     const state=JSON.parse(row.payload);
     if(!state.sheetLink)break;
@@ -129,22 +128,24 @@ async function runScheduledSheetSync(env){
 }
 
 async function syncSheetLead(access,env,id){
+  const lead=access.state?.leads?.find(item=>item.id===id);
   const finish=async error=>{
     const queue=access.state?.sheetQueue;
     const job=queue&&Object.hasOwn(queue,id)?queue[id]:null;
     if(!job)return;
     if(error){
       const attempts=job.attempts+1;
-      access.state.sheetQueue[id]={attempts,nextAt:Date.now()+Math.min(3600000,30000*2**Math.min(attempts,7)),error:error.message.slice(0,250)};
+      access.state.sheetQueue[id]={...job,attempts,nextAt:Date.now()+Math.min(3600000,30000*2**Math.min(attempts,7)),error:error.message.slice(0,250)};
     }else delete access.state.sheetQueue[id];
     await env.DB.prepare('UPDATE workspace_state SET revision = revision + 1, payload = ?, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = ? AND revision = ?')
       .bind(JSON.stringify(access.state),access.workspace,access.revision).run();
   };
   try {
-    const lead=access.state?.leads?.find(item=>item.id===id);
     const link=access.state?.sheetLink;
     if(!lead||!link||!env.GOOGLE_SHEETS_SERVICE_ACCOUNT)throw Error('A saved lead and an authenticated Sheet connection are required.');
     const identity=sheetPhone(lead.sheetSnapshot?.phone||lead.phone);
+    const snapshot={...lead.sheetSnapshot};
+    const dirty=access.state.sheetQueue[id]?.fields;
     if(!identity)throw Error('This lead has no valid phone number for matching.');
     const {file,gid}=parseSheetLink(link);
     const token=await sheetToken(env,true);
@@ -180,16 +181,26 @@ async function syncSheetLead(access,env,id){
     const phoneColumn=sheetColumn(columns.phone);
     const matches=[];
     const newPhone=sheetPhone(lead.phone);
-    let newPhoneExists=false;
+    const replacementMatches=[];
     for(let first=headerRow+1;first<=rowCount;first+=1000){
       const phones=await values(phoneColumn+first+':'+phoneColumn+Math.min(first+999,rowCount));
       phones.forEach((row,index)=>{
         const phone=sheetPhone(row[0]);
         if(phone===identity)matches.push(first+index);
-        if(phone===newPhone&&phone!==identity)newPhoneExists=true;
+        if(newPhone&&phone===newPhone&&phone!==identity)replacementMatches.push(first+index);
       });
     }
-    if(matches.length>1||newPhoneExists)throw Error('Multiple leads could match this phone number. Resolve the duplicate before writing.');
+    if(matches.length>1||replacementMatches.length>1||matches.length&&replacementMatches.length)throw Error('Multiple leads could match this phone number. Resolve the duplicate before writing.');
+    if(!matches.length&&replacementMatches.length&&lead.sheetSnapshot){
+      const [row=[]]=await values('A'+replacementMatches[0]+':'+sheetColumn(columnCount-1)+replacementMatches[0]);
+      const matchesExisting=String(row[columns.name]??'').trim()===String(lead.name??'').trim() &&
+        Object.entries(columns).every(([field,column])=>column<0||field==='phone'||!dirty?.includes(field)||
+          String(row[column]??'').trim()===String(lead[field]??'').trim());
+      if(!matchesExisting)throw Error('The new phone already exists on another Sheet row.');
+      lead.sheetSnapshot={...snapshot,...Object.fromEntries((dirty||[]).map(field=>[field,lead[field]])),phone:lead.phone};
+      await finish();
+      return json({updatedCells:0});
+    }
     if(!matches.length){
       if(lead.sheetSnapshot||lead.source==='Google Sheets')throw Error('The previously imported Sheet row is missing. Review before recreating it.');
       if(!env.SHEET_WRITES_SERIALIZED)throw Error('New rows require the serialized Vercel Sheet writer.');
@@ -199,6 +210,8 @@ async function syncSheetLead(access,env,id){
       }
       const range=title+'!A'+headerRow+':'+sheetColumn(cells.length-1);
       await google('/values/'+encodeURIComponent(range)+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{values:[cells]});
+      lead.sheetSnapshot=Object.fromEntries(Object.entries(columns).filter(([,column])=>column>=0)
+        .map(([field,column])=>[field,cells[column]]));
       await finish();
       return json({created:true,updatedCells:0});
     }
@@ -208,20 +221,25 @@ async function syncSheetLead(access,env,id){
     if(!lead.sheetSnapshot){
       const matchesSavedLead=Object.entries(columns).every(([field,column])=>column<0||field==='phone'||String(row[column]??'').trim()===String(lead[field]??'').trim());
       if(!matchesSavedLead)throw Error('This phone already exists in the Sheet. Import it before updating the existing row.');
+      lead.sheetSnapshot=Object.fromEntries(Object.entries(columns).filter(([,column])=>column>=0)
+        .map(([field,column])=>[field,String(row[column]??'').trim()]));
       await finish();
       return json({updatedCells:0});
     }
     const updates=[];
     for(const [field,column] of Object.entries(columns)){
-      if(column<0||field==='phone')continue;
+      if(column<0||!Object.hasOwn(lead,field)||dirty&&!dirty.includes(field))continue;
       const before=String(lead.sheetSnapshot[field]??'').trim();
       const after=String(lead[field]??'').trim();
       const actual=String(row[column]??'').trim();
-      if(before===after||actual===after)continue;
-      if(actual.startsWith('=')||actual!==before)throw Error('The Sheet '+field+' differs from the last import. Review the conflict before writing.');
+      if(before===after || field==='phone' && sheetPhone(before)===sheetPhone(after))continue;
+      if(actual===after){snapshot[field]=after;continue;}
+      if(actual.startsWith('=')||(field==='phone'?sheetPhone(actual)!==sheetPhone(before):actual!==before))throw Error('The Sheet '+field+' differs from the last import. Review the conflict before writing.');
+      snapshot[field]=after;
       updates.push({range:title+'!'+sheetColumn(column)+rowNumber,values:[[after]]});
     }
     if(updates.length)await google('/values:batchUpdate',{valueInputOption:'RAW',data:updates});
+    lead.sheetSnapshot=snapshot;
     await finish();
     return json({updatedCells:updates.length});
   }catch(error){
