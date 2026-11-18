@@ -88,6 +88,7 @@ const sheetWriteFields = {
   sheetPipeline:['pipelinestatus'],
   sheetInterest:['interest'],
   area:['specialization','area','keyword'],
+  instagram:['igpersonal','instagramprofile','instagram','instagramhandle'],
   method:['lastcontactmethod','contactmethod'],
   instructions:['instructions'],
   note:['remarks','notes']

@@ -28,12 +28,14 @@ function operate(access,state,command) {
       if (task.timer) task.elapsed = (task.elapsed||0) + Math.max(0,Date.now()-task.timer);
       delete task.timer;
     }
+    const previousAction=lead.action||'';
     Object.assign(lead,{status:command.status,note,due,action});
     const method=['Call','WhatsApp','Email','Instagram','Other'].includes(command.method)?command.method:'';
     if(method)lead.method=method;
     if(action||command.status==='Follow-up')lead.sheetStage='Followup';
     else if(command.status==='Contacted'&&!lead.sheetStage)lead.sheetStage='Communication';
-    (lead.history ||= []).unshift({date:todayIST(),status:lead.status,note,actor:access.name,method});
+    const number=loggedFollowUps(lead).length+1;
+    (lead.history ||= []).unshift({kind:'follow-up',number,date:todayIST(),status:lead.status,note,actor:access.name,method,previousAction,nextAction:action,nextDue:due});
     if (action) state.tasks.unshift({id:crypto.randomUUID(),title:action+' · '+lead.name,owner:assignees(lead)[0],owners:assignees(lead),due,priority:lead.priority||'Medium',status:'To do',lead:lead.id,note});
     audit(state,access,'Logged lead outcome',lead.name);
   } else if (command.type === 'request') {

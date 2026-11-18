@@ -82,6 +82,7 @@ async function workspace(request, env) {
       if(typeof lead.id!=='string'||!lead.id||lead.id.length>128)continue;
       const prior=priorLeads.get(lead.id);
       if(!prior&&lead.source==='Google Sheets')continue;
+      if(lead.quickCaptured&&!sheetPhone(lead.phone)&&!lead.sheetSnapshot)continue;
       if(prior&&JSON.stringify(prior.sheetSnapshot)!==JSON.stringify(lead.sheetSnapshot))continue;
       const changed=Object.keys(sheetWriteFields).filter(field=>sheetLeadValue(lead,field)!==sheetLeadValue(prior,field));
       if(changed.length){
@@ -97,7 +98,7 @@ async function workspace(request, env) {
     else if (prior?.assignedAt) task.assignedAt=prior.assignedAt;
     else delete task.assignedAt;
     if (task.status!==prior?.status) task.statusChangedAt=now;
-    else if (prior.statusChangedAt) task.statusChangedAt=prior.statusChangedAt;
+    else if (prior?.statusChangedAt) task.statusChangedAt=prior.statusChangedAt;
     else delete task.statusChangedAt;
     if (task.status === 'Done' && prior?.status !== 'Done') {
       task.completedAt=now;

@@ -222,7 +222,7 @@ function render(){
  'All leads':data.leads,'Unassigned':unassigned,'Assigned':data.leads.filter(lead=>lead.owner),
  'My leads':data.leads.filter(lead=>assignedTo(lead,currentName)),'Follow-ups':due
  };
- const visible=queues[filter].filter(lead=>[lead.name,lead.phone,lead.area,assigneeLabel(lead),leadColumn(lead,'Brand / Organisation'),leadColumn(lead,'City')].join(' ').toLowerCase().includes(query.toLowerCase()));
+ const visible=queues[filter].filter(lead=>[lead.name,lead.phone,lead.area,lead.instagram,assigneeLabel(lead),leadColumn(lead,'Brand / Organisation'),leadColumn(lead,'City')].join(' ').toLowerCase().includes(query.toLowerCase()));
  const tabs=(isEmployee()?['My leads','Follow-ups']:['All leads','My leads','Unassigned','Assigned','Follow-ups']).map(name=>
  `<button data-act="lead-filter" data-key="${name}" aria-pressed="${name===filter}">${name==='Follow-ups'?'Follow-ups due':name} <span class="tab-count">${queues[name].length}</span></button>`).join('');
  const pageSize=25;
@@ -241,12 +241,12 @@ function render(){
   return `<tr>${checkbox?`<td><input type="checkbox" aria-label="Select ${e(lead.name)}" data-check="${e(lead.id)}" ${selected.has(lead.id)?'checked':''}></td>`:''}
   <td><button class="link lead-name" data-act="lead" data-key="${e(lead.id)}">${e(lead.name)}</button>${context||lead.phone?`<small>${e(context||lead.phone)}</small>`:''}</td>
   <td>${pill(lead.status)}</td><td>${assigneeLinks(lead)}</td>
-  <td>${lead.action?`<strong>${e(lead.action)}</strong>`:'<span class="muted">—</span>'}${due?`<small>${e(due)}</small>`:''}</td>
+  <td>${lead.action?`<strong>${e(lead.action)}</strong><small>${loggedFollowUps(lead).length} follow-ups logged</small>`:'<span class="muted">—</span>'}${due?`<small>${e(due)}</small>`:''}</td>
   <td><div class="lead-row-actions">${checkbox?btn(lead.owner?'Reassign':'Assign','assign',lead.id):''}${btn('Follow up','outcome',lead.id)}</div></td></tr>`;
  });
  const caption=visible.length?`Showing ${start+1}–${start+shown.length} of ${visible.length}`:'0 leads';
  const pager=`<div class="lead-pagination"><span>${caption}</span><div><button data-act="lead-page" data-key="-1" ${leadPage===1?'disabled':''}>Previous</button><span>${leadPage} / ${totalPages}</span><button data-act="lead-page" data-key="1" ${leadPage===totalPages?'disabled':''}>Next</button></div></div>`;
- ui.innerHTML=title('Experts','Manage assignments, outreach and onboarding.',btn('Pipeline','expert-view','Pipeline')+(isEmployee()?'':(isSuperAdmin()?btn('Import from Sheet','nav','Integrations'):btn('Import CSV','import'))+btn('＋ Add lead','lead','',true)))+
+ ui.innerHTML=title('Experts','Manage assignments, outreach and onboarding.',btn('Pipeline','expert-view','Pipeline')+(isEmployee()?'':(isSuperAdmin()?btn('Import from Sheet','nav','Integrations'):btn('Import CSV','import'))+btn('＋ Quick capture','quick-lead','',true)+btn('Add lead','lead')))+
  `<section class="panel leads-panel"><div class="toolbar"><input id="search" aria-label="Search leads" placeholder="Search experts, cities, or owners" value="${e(query)}"><span class="results-count">${visible.length} ${visible.length===1?'lead':'leads'}</span>${checkbox?btn('Export CSV','export'):''}</div><div class="filter-tabs lead-tabs" aria-label="Lead filters">${tabs}</div>${checkbox&&selected.size?`<div class="bulk-toolbar"><strong>${selected.size} selected</strong>${btn('Clear','lead-clear')}${btn('Assign selected','assign','',true)}</div>`:''}
  ${shown.length?`<div class="lead-table-scroll ${checkbox?'with-selection':''}">${table(heads,rows)}</div>${pager}`:empty('No leads match this view.')}</section>`;
  $('#search').oninput=event=>{query=event.target.value;leadPage=1;selected.clear();const pos=event.target.selectionStart;render();$('#search').focus();$('#search').setSelectionRange(pos,pos)};
@@ -305,8 +305,13 @@ function makeTask(l){
 const normalized=s=>s.replace(/\D/g,'').replace(/^91(?=\d{10}$)/,'');
 function setLead(l,v){
  v.name=v.name.trim();v.phone=v.phone.trim();
- if(!v.name||!normalized(v.phone))throw Error('Enter a name and valid phone number.');
- if(data.leads.some(x=>x.id!==l.id&&normalized(x.phone)===normalized(v.phone)))throw Error('This phone number already belongs to a lead.');
+ const phone=normalized(v.phone);
+ const instagram=leadInstagram(v.instagram);
+ if(!v.name||((!l.quickCaptured||l.sheetSnapshot?.phone)&&!phone)||v.phone&&!phone)throw Error('Enter a name and a valid phone number.');
+ if(v.instagram&&!instagram)throw Error('Enter an Instagram @handle or profile link.');
+ if(data.leads.some(x=>x.id!==l.id&&((phone&&normalized(x.phone||'')===phone)||
+   (instagram&&instagram===leadInstagram(x.instagram||leadColumn(x,'IG (Personal)'))))))throw Error('An expert lead already uses this phone or Instagram profile.');
+ v.instagram=instagram;
  Object.assign(l,v);setAssignees(l,v.owners);if(!data.leads.includes(l))data.leads.unshift(l);makeTask(l);
 }
 const reader=file=>new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve({name:file.name,url:r.result});r.onerror=()=>reject(Error('Unable to read attachment.'));r.readAsDataURL(file)});
@@ -457,12 +462,13 @@ document.addEventListener('click',async ev=>{
  if(key==='out')a.out=now;
  busy=true;try{await save()}catch(error){data=structuredClone(committed);notify(error.message)}finally{busy=false;render()}return;
  }
+ if(act==='quick-lead'&&!isEmployee()){openQuickLead();return;}
  if(act==='lead'){
  const l=data.leads.find(x=>x.id===key)||{id:id(),status:'New',source:'Manual'};
  const links=btn('Follow up','outcome',l.id);
- const history=(l.history||[]).map(h=>`<p>${e([h.date,h.actor,h.method,h.status,h.note].filter(Boolean).join(' · '))}</p>`).join('');
+ const history=key?followUpHistory(l):'';
  if(isEmployee()){readRecord(e(l.name),links+'<p>'+e([l.status,l.action,l.due].filter(Boolean).join(' · '))+'</p><p>'+e(l.instructions)+'</p>'+leadSheetDetails(l)+history);return}
- form(key?'Edit expert lead':'Add expert lead',input('Name','name',l.name,'text',true)+input('Phone','phone',l.phone,'tel',true)+input('Specialization','area',l.area)+select('ERP stage','status',options(statuses,l.status))+assigneePicker(l)+input('Next action','action',l.action)+input('Due date','due',l.due,'date')+area('Instructions','instructions',l.instructions)+
+ form(key?'Edit expert lead':'Add expert lead',input('Name','name',l.name,'text',true)+input('Phone','phone',l.phone,'tel',!l.quickCaptured||Boolean(l.sheetSnapshot?.phone))+input('Instagram','instagram',l.instagram)+input('Specialization','area',l.area)+select('ERP stage','status',options(statuses,l.status))+assigneePicker(l)+input('Next action','action',l.action)+input('Due date','due',l.due,'date')+area('Instructions','instructions',l.instructions)+
  (data.sheetLink||l.sheetSnapshot?select('Lead Status','sheetStage',options(['','Followup','Communication','Call Confirmed','Call Concluded'],l.sheetStage))+
  select('Pipeline Status','sheetPipeline',options(['','Hot','In Progress','Cold'],l.sheetPipeline))+
  select('Interest','sheetInterest',options(['','Yes','No','Maybe'],l.sheetInterest)):'')+leadSheetDetails(l)+history,
@@ -542,7 +548,7 @@ document.addEventListener('click',async ev=>{
  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='svaveda-expert-leads.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
  }
 });
-$('#quick').onclick=()=>{modal.innerHTML='<h2>Create</h2><div class="create-choices">'+btn('Expert lead','lead')+btn('Task','task')+btn('Calendar event','event')+(isSuperAdmin()?btn('Employee','person'):'')+'</div>';modal.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>modal.close()));modal.showModal()};
+$('#quick').onclick=()=>{modal.innerHTML='<h2>Create</h2><div class="create-choices">'+btn('Quick capture','quick-lead')+btn('Expert lead','lead')+btn('Task','task')+btn('Calendar event','event')+(isSuperAdmin()?btn('Employee','person'):'')+'</div>';modal.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>modal.close()));modal.showModal()};
 function readRecord(heading,body){
  modal.innerHTML='<h2>'+heading+'</h2>'+body+'<button id="close-record">Close</button>';
  $('#close-record').onclick=()=>modal.close();
@@ -683,7 +689,7 @@ function activityAlerts(state){
    add('task-due:'+task.id+':'+task.due,task.due===today?'Task due today':'Task overdue',task.title,0,'task',task.id);
  }
  for(const lead of state.leads.filter(lead=>assignedTo(lead,currentName)&&lead.due&&lead.due<=today&&!['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status)))
-  add('lead:'+lead.id+':'+lead.due,'Expert follow-up due',lead.name,0,'outcome',lead.id);
+  add('lead:'+lead.id+':'+lead.due,'Follow-up #'+(loggedFollowUps(lead).length+1)+' due',[lead.name,lead.action,'Due '+lead.due].filter(Boolean).join(' · '),0,'outcome',lead.id);
  for(const event of state.events.filter(item=>item.date===today&&item.category!=='Holiday'&&(!item.owner||item.owner===currentName)))
   add('event:'+event.id+':'+event.date,'Scheduled today',event.title,0,'event',event.id);
  for(const request of state.requests||[]){

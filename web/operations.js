@@ -1,16 +1,35 @@
 let projectSelection='', projectView='List', projectTab='Tasks';
 
+function openQuickLead(){
+ form('Quick capture',input('Expert name','name','','text',true)+input('Phone (optional)','phone','','tel')+
+  input('Instagram @handle or profile link (optional)','instagram')+area('Note (optional)','instructions')+
+  '<p>Creates a reminder in My Day for tomorrow. Add a phone later to sync the lead to Google Sheets.</p>',
+ 'Save lead',values=>{
+  const lead={id:id(),status:'New',source:'Manual',quickCaptured:true};
+  setLead(lead,{...values,owners:[currentName],due:day(1),action:values.instagram?'Review Instagram lead':'Review new lead'});
+ },'compact');
+}
+
+function followUpHistory(lead){
+ const entries=loggedFollowUps(lead);
+ const rows=entries.map((entry,index)=>`<div class="item"><strong>Follow-up #${entry.number||entries.length-index}</strong><p>${e([entry.date,entry.actor,entry.method,entry.status].filter(Boolean).join(' · '))}</p>${entry.previousAction?`<p>Action: ${e(entry.previousAction)}</p>`:''}${entry.note?`<p>${e(entry.note)}</p>`:''}${entry.nextAction?`<p>Next: ${e([entry.nextAction,entry.nextDue].filter(Boolean).join(' · '))}</p>`:''}</div>`).join('');
+ return `<details class="task-options"><summary>Follow-up history · ${entries.length} logged</summary>${rows||empty('No follow-ups logged yet.')}</details>`;
+}
+
 function openLeadOutcome(key){
  const lead=data.leads.find(item=>item.id===key);
  if(!lead)return;
  const phone=normalized(lead.phone||'');
- const contact=phone&&!['Do not contact','Invalid number','Not interested','Onboarded','Program listed'].includes(lead.status);
- const methods=['Call','WhatsApp'];
+ const instagram=leadInstagram(lead.instagram||leadColumn(lead,'IG (Personal)'));
+ const contact=(phone||instagram)&&!['Do not contact','Invalid number','Not interested','Onboarded','Program listed'].includes(lead.status);
+ const methods=[...(phone?['Call','WhatsApp']:[]),...(instagram?['Instagram']:[])];
  const method=methods.includes(lead.method)?lead.method:methods[0];
  const launch=contact?`<div class="follow-up-contact">${select('Contact method','method',options(methods,method))}<a class="contact-action" id="follow-up-contact">Open contact</a></div>`:'';
- form('Follow up · '+e(lead.name),'<p>'+e(assigneeLabel(lead)||'Unassigned')+'</p>'+launch+
+ const count=loggedFollowUps(lead).length;
+ const context=[assigneeLabel(lead)||'Unassigned',count+' previously logged',lead.action,lead.due&&'Due '+lead.due].filter(Boolean).join(' · ');
+ form('Follow-up #'+(count+1)+' · '+e(lead.name),'<p>'+e(context)+'</p>'+launch+
  select('Outcome','status',options(statuses,lead.status))+input('Next step','action','')+
- input('Follow-up date','due',lead.due>=day()?lead.due:'','date')+area('Notes','note',lead.note),
+ input('Follow-up date','due',lead.due>=day()?lead.due:'','date')+area('Notes','note','')+followUpHistory(lead),
  'Save follow-up',value=>({type:'lead-outcome',id:key,...value}), 'compact');
  const fields=modal.querySelector('form').elements;
  const updateNextStep=()=>{
@@ -23,10 +42,11 @@ function openLeadOutcome(key){
  const mode=modal.querySelector('[name=method]');
  const update=()=>{
   const whatsapp=mode.value==='WhatsApp';
-  link.href=whatsapp?'https://wa.me/'+(phone.length===10?'91'+phone:phone):'tel:'+lead.phone.replace(/[^+\d]/g,'');
-  link.target=whatsapp?'_blank':'_self';
+  const social=mode.value==='Instagram';
+  link.href=social?'https://www.instagram.com/'+encodeURIComponent(instagram)+'/':whatsapp?'https://wa.me/'+(phone.length===10?'91'+phone:phone):'tel:'+lead.phone.replace(/[^+\d]/g,'');
+  link.target=whatsapp||social?'_blank':'_self';
   link.rel='noopener noreferrer';
-  link.textContent=whatsapp?'Open WhatsApp':'Open dialer';
+  link.textContent=social?'Open Instagram':whatsapp?'Open WhatsApp':'Open dialer';
  };
  mode.onchange=update;update();
 }
