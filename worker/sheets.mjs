@@ -209,8 +209,12 @@ async function syncSheetLead(access,env,id){
       for(const [field,column] of Object.entries(columns)){
         if(column>=0)cells[column]=sheetLeadValue(lead,field);
       }
-      const range=title+'!A'+headerRow+':'+sheetColumn(cells.length-1);
-      await google('/values/'+encodeURIComponent(range)+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{values:[cells]});
+      // Append cells from column A. values.append can shift the row to the logical table's first column.
+      await google(':batchUpdate',{requests:[{appendCells:{
+        sheetId:tab.sheetId,
+        rows:[{values:cells.map(value=>value?{userEnteredValue:{stringValue:value}}:{})}],
+        fields:'userEnteredValue'
+      }}]});
       lead.sheetSnapshot=Object.fromEntries(Object.entries(columns).filter(([,column])=>column>=0)
         .map(([field,column])=>[field,cells[column]]));
       await finish();
