@@ -242,3 +242,68 @@ function workProjects(){
  return panel('Projects',(isEmployee()?'':`<div class="toolbar">${btn('New project','project','',true)}</div>`)+
  (data.projects.map(item=>listItem(item.name,[item.owner,item.due].filter(Boolean).join(' · '),btn('Open','ops-project',item.id))).join('')||empty('No projects yet.')));
 }
+
+let performancePeriod='Daily', performanceDate='';
+const taskResultKeys=['actualOutput','actualHours','kpiActual','proofUrl'];
+const taskAmount=(label,name,value='')=>`<label>${label}<input type="number" min="0" step="any" name="${name}" value="${e(value)}"></label>`;
+const taskResultFields=t=>area('Actual output','actualOutput',t.actualOutput)+taskAmount('Actual hours (overrides timer total)','actualHours',t.actualHours)+
+ taskAmount(t.kpi?'Actual KPI value ('+e(t.kpi)+')':'Actual KPI value','kpiActual',t.kpiActual)+input('Deliverable URL','proofUrl',t.proofUrl,'url');
+const taskResultsDetails=t=>`${t.expectedOutput?'<p><strong>Expected:</strong> '+e(t.expectedOutput)+'</p>':''}${t.actualOutput?'<p><strong>Delivered:</strong> '+e(t.actualOutput)+'</p>':''}${/^https?:\/\//i.test(t.proofUrl||'')?'<p><a href="'+e(t.proofUrl)+'" target="_blank" rel="noopener noreferrer">Open deliverable</a></p>':''}`;
+function taskPlanFields(t){
+ return '<p id="task-points" aria-live="polite"></p>'+
+ select('Department','department',options(['Choose department',...taskDepartments],t.department,'Choose department'))+
+ select('Task type','taskType',options(['Choose type',...taskTypes],t.taskType,'Choose type'))+
+ input('Planned work date','plannedDate',t.plannedDate||t.due,'date')+
+ area('Expected output','expectedOutput',t.expectedOutput)+input('KPI name','kpi',t.kpi)+
+ input('KPI unit','kpiUnit',t.kpiUnit)+select('KPI rollup','kpiRollup',options(['Total','Average','Latest'],t.kpiRollup||'Total'))+
+ taskAmount('KPI target','kpiTarget',t.kpiTarget);
+}
+
+function renderTaskPerformance(){
+ const date=performanceDate||day();
+ const [start,end]=taskPeriod(date,performancePeriod);
+ const summary=taskSummary(data.tasks,start,end,time=>day(0,time));
+ const {planned,finished,pending,unplanned,plannedPoints,completedPoints,completedPlannedPoints,hours,score}=summary;
+ const stats=[['Planned points',plannedPoints],['Completed points',completedPoints],['Plan completion',score===null?'—':score+'%'],
+  ['Hours on completed tasks',hours.toFixed(2)],['Pending planned tasks',pending.length],['Unplanned tasks completed',unplanned.length]];
+ const groups=new Map(), kpis=new Map();
+ for (const task of [...finished].sort((a,b)=>a.completedAt-b.completedAt)) {
+  const department=task.department||'Uncategorised';
+  const group=groups.get(department)||{count:0,points:0};
+  group.count++;group.points+=taskPoints(task);groups.set(department,group);
+  const label=String(task.kpi||'').trim();
+  if (!label) continue;
+  const unit=String(task.kpiUnit||'').trim();
+  const rollup=task.kpiRollup||'Total';
+  const key=JSON.stringify([department,label.toLowerCase(),unit.toLowerCase(),rollup]);
+  const metric=kpis.get(key)||{department,label,unit,rollup,target:[],actual:[]};
+  for(const [field,source] of [['target','kpiTarget'],['actual','kpiActual']]){
+   if(task[source]==null||task[source]===''||!Number.isFinite(Number(task[source])))continue;
+   metric[field].push(Number(task[source]));
+  }
+  kpis.set(key,metric);
+ }
+ const showKpi=(values,rollup)=>{
+  if(!values.length)return '—';
+  const total=values.reduce((sum,value)=>sum+value,0);
+  const value=rollup==='Latest'?values.at(-1):rollup==='Average'?total/values.length:total;
+  return e(value.toLocaleString('en-IN',{maximumFractionDigits:3}));
+ };
+ const linkedTask=t=>btn(e(t.title),'task',t.id);
+ const finishedRows=finished.map(t=>`<tr><td>${linkedTask(t)}</td><td>${e(t.owner||'Unassigned')}</td><td>${e(t.actualOutput||'—')}</td><td>${taskPoints(t)||'—'}</td></tr>`);
+ const pendingRows=pending.map(t=>`<tr><td>${linkedTask(t)}</td><td>${e(t.expectedOutput||'—')}</td><td>${e(t.plannedDate||t.due)}</td><td>${pill(t.status)}</td></tr>`);
+ const projectRows=data.projects.flatMap(project=>{
+  const closed=finished.filter(t=>t.projectId===project.id&&t.taskType==='Project-based').length;
+  const open=pending.filter(t=>t.projectId===project.id&&t.taskType==='Project-based').length;
+  return closed||open?[`<tr><td>${e(project.name||project.title||'Project')}</td><td>${closed}</td><td>${open}</td></tr>`]:[];
+ });
+ ui.innerHTML=title(isEmployee()?'My performance':'Task performance','Review deliverables, planned workload and recorded KPI results.',btn('View tasks','nav','Tasks'))+
+ `<div class="panel"><div class="toolbar view-toolbar"><div class="segments" aria-label="Reporting period">${['Daily','Weekly','Monthly'].map(period=>`<button data-act="performance-period" data-key="${period}" aria-pressed="${period===performancePeriod}">${period}</button>`).join('')}</div><label>Reporting date <input id="performance-date" type="date" value="${date}"></label><span>${start}${start===end?'':' to '+end} · IST</span></div></div>`+
+ panel('Execution',`<div class="split">${stats.map(([label,value])=>listItem(label,String(value))).join('')}</div><div class="panel-foot"><p>${completedPlannedPoints} of ${plannedPoints} planned points completed within the period · ${planned.length} planned tasks</p></div>`)+
+ panel('Deliverables',finishedRows.length?table(['Task','Assignee','Actual output','Points'],finishedRows):empty('No dated completions in this period.'))+
+ panel('Pending planned work',pendingRows.length?table(['Task','Expected output','Planned date','Status'],pendingRows):empty('No pending tasks planned in this period.'))+
+ panel('Department workload',groups.size?table(['Department','Completed tasks','Completed points'],[...groups].map(([name,g])=>`<tr><td>${e(name)}</td><td>${g.count}</td><td>${g.points}</td></tr>`)):empty('No completed workload in this period.'))+
+ panel('Project milestones',projectRows.length?table(['Project','Completed','Pending'],projectRows):empty('No project-based tasks in this period.'))+
+ panel('Business impact',kpis.size?table(['Department','KPI','Unit','Rollup','Target','Actual'],[...kpis.values()].map(k=>`<tr><td>${e(k.department)}</td><td>${e(k.label)}</td><td>${e(k.unit||'—')}</td><td>${e(k.rollup)}</td><td>${showKpi(k.target,k.rollup)}</td><td>${showKpi(k.actual,k.rollup)}</td></tr>`)):empty('Record a KPI and its result on a completed task to see it here.'));
+ $('#performance-date').onchange=event=>{if(event.target.value){performanceDate=event.target.value;render();}};
+}

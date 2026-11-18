@@ -50,6 +50,7 @@ async function workspace(request, env) {
   }
   if (revision !== access.revision) return json({ error: 'The workspace changed in another tab. Reload to get the latest records.' }, 409);
   if (!command && access.role !== 'Employee') access.priorLeadOwners = new Map((access.state?.leads||[]).map(lead=>[lead.id,lead.owner||'']));
+  const priorTasks = new Map((access.state?.tasks || []).map(task=>[task.id,{status:task.status,completedAt:task.completedAt}]));
   const priorLeads = new Map((access.state?.leads||[]).map(lead=>[lead.id,{...lead}]));
   let next;
   if (command) {
@@ -88,6 +89,13 @@ async function workspace(request, env) {
         next.sheetQueue[lead.id]={attempts:0,nextAt:0,fields:[...new Set([...(pending||[]),...changed])]};
       }
     }
+  }
+  for (const task of next.tasks) {
+    const prior = priorTasks.get(task.id);
+    if (task.status !== 'Done') delete task.completedAt;
+    else if (prior?.status !== 'Done') task.completedAt = Date.now();
+    else if (prior.completedAt) task.completedAt = prior.completedAt;
+    else delete task.completedAt;
   }
   advanceRecurringTasks(next);
   const payload = JSON.stringify(next);

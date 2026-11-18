@@ -254,11 +254,11 @@ function render(){
  taskFilter==='Overdue'&&waiting(t)&&t.due&&t.due<day()||
  taskFilter==='Completed'&&t.status==='Done');
  const filters=personalTaskScope?['Mine','Today','Overdue','Review','Completed']:['Open','Today','Overdue','Review','Completed','All'];
- const list=tasks.length?table(['Task','Assignee','Due date','Priority','Status'],tasks.map(t=>`<tr><td><button class="link" data-act="task" data-key="${e(t.id)}">${e(t.title)}</button></td><td>${ownerLink(t.owner)}</td><td>${e(t.due||'—')}</td><td>${e(t.priority)}</td><td>${pill(t.status)}</td></tr>`)):empty('No tasks in this view.');
+ const list=tasks.length?table(['Task','Assignee','Due date','Points','Status'],tasks.map(t=>`<tr><td><button class="link" data-act="task" data-key="${e(t.id)}">${e(t.title)}</button></td><td>${ownerLink(t.owner)}</td><td>${e(t.due||'—')}</td><td>${taskPoints(t)||'—'}</td><td>${pill(t.status)}</td></tr>`)):empty('No tasks in this view.');
  const dated=tasks.filter(task=>task.due).sort((a,b)=>a.due.localeCompare(b.due));
  const days=[...new Set(dated.map(task=>task.due))];
  const schedule=days.length?days.map(date=>`<div class="task-date-group"><h3>${e(calLabel(date,{weekday:'long',day:'numeric',month:'short'}))}</h3>${taskRows(dated.filter(task=>task.due===date))}</div>`).join(''):empty('No dated tasks in this view.');
- ui.innerHTML=title(personalTaskScope?'My tasks':'Work',isEmployee()?'Open a task to update or submit your work.':'Assign work, track time and review submissions.',isEmployee()?'':btn('＋ New task','task','',true))+
+ ui.innerHTML=title(personalTaskScope?'My tasks':'Work',isEmployee()?'Open a task to update or submit your work.':'Assign work, track time and review submissions.',btn('Performance','nav','Performance')+(isEmployee()?'':btn('＋ New task','task','',true)))+
  `<div class="panel"><div class="toolbar view-toolbar"><div class="filter-tabs" aria-label="Task filters">${filters.map(name=>`<button data-act="task-tab" data-key="${name}" aria-pressed="${name===taskFilter}">${name==='Mine'?'All open':name}</button>`).join('')}</div><div class="segments" aria-label="Task view">${['List','Board','Due dates'].map(name=>`<button data-act="task-view" data-key="${name}" aria-pressed="${name===taskView}">${name}</button>`).join('')}</div></div>${taskView==='List'?list:taskView==='Board'?taskBoard(tasks):schedule}</div>`+workProjects();
 
  }
@@ -268,7 +268,7 @@ function render(){
  if(page==='Attendance'&&isFounder())ui.innerHTML=title('Team','Manage team workload and availability.',btn('Approvals','nav','Review Queue'))+teamDirectory();
  else if(page==='Attendance')ui.innerHTML=title(isEmployee()?'Attendance':'Team','Track check-ins, breaks and working hours.',btn('New request','ops-request'))+panel('Today',attendanceCard())+panel('Attendance history',table(['Date','Check-in','Check-out','Working time'],Object.entries(data.attendance).sort().reverse().map(([d,a])=>`<tr><td>${d}</td><td>${clock(a.in)}</td><td>${clock(a.out)}</td><td>${a.out?duration(a.out-a.in-(a.breakMs||0)):'In progress'}</td></tr>`)))+personalRequests()+teamDirectory()+teamPerformance();
  if(page==='Employees'){page='Attendance';render();return}
- if(page==='Performance'){page='Attendance';render();return}
+ if(page==='Performance'){renderTaskPerformance();return}
  if(page==='Messages')renderMessages();
  if(page==='Roles & Access'||page==='Integrations'){
   page='Integrations';
@@ -416,6 +416,7 @@ document.addEventListener('click',async ev=>{
  if(act==='lead-page'){leadPage=Math.max(1,leadPage+Number(key));render();return}
  if(act==='lead-filter'){leadPage=1;filter=key;selected.clear();render();return}
  if(act==='owner-work'){if(!isEmployee()||key===currentName)openOwnerWork(key);return}
+ if(act==='performance-period'){performancePeriod=key;render();return}
  if(act==='task-view'){taskView=key;render();return}
  if(act==='task-tab'){taskFilter=key;render();return}
 
@@ -466,13 +467,14 @@ document.addEventListener('click',async ev=>{
  if(modal.open)modal.close();
  const t=data.tasks.find(x=>x.id===key)||{id:id(),status:'To do',priority:'Medium',start:day(),due:day(),projectId:page==='Projects'?projectSelection:''};
  if(isEmployee()){
-  if(t.status==='Done'){readRecord(e(t.title),'<p>Completed</p><p>'+e(t.note)+'</p>'+download(t.file));return}
-  form(e(t.title),'<p>'+e([t.due,t.priority,t.note].filter(Boolean).join(' · '))+'</p>'+download(t.file)+select('Status','status',options(['To do','In progress','Blocked','In review'],t.status==='Rework'?'In progress':t.status))+select('Timer','timerAction',options(['Keep current',t.timer?'Pause':'Start'],'Keep current'))+'<p>Tracked '+duration((t.elapsed||0)+(t.timer?Math.max(0,Date.now()-t.timer):0))+'</p>'+taskChecklist(t)+area('Work submission or comment','comment')+input('Submission attachment','submission','','file')+(t.submission?download(t.submission):'')+(t.comments||[]).map(c=>'<p>'+e(c)+'</p>').join(''),'Update task',async value=>{
+  if(t.status==='Done'){readRecord(e(t.title),'<p>Completed</p><p>'+e(t.note)+'</p>'+taskResultsDetails(t)+download(t.file)+download(t.submission));return}
+  form(e(t.title),'<p>'+e([t.due,t.priority,t.note].filter(Boolean).join(' · '))+'</p>'+taskResultsDetails(t)+download(t.file)+select('Status','status',options(['To do','In progress','Blocked','In review'],t.status==='Rework'?'In progress':t.status))+select('Timer','timerAction',options(['Keep current',t.timer?'Pause':'Start'],'Keep current'))+'<p>Tracked '+duration((t.elapsed||0)+(t.timer?Math.max(0,Date.now()-t.timer):0))+'</p>'+taskChecklist(t)+taskResultFields(t)+area('Work submission or comment','comment')+input('Submission attachment','submission','','file')+(t.submission?download(t.submission):'')+(t.comments||[]).map(c=>'<p>'+e(c)+'</p>').join(''),'Update task',async value=>{
    t.checklist=(t.checklist||[]).map((item,i)=>({...item,done:value['step'+i]==='on'}));
    const file=await attach(value.submission);if(file)t.submission=file;
    if(value.timerAction==='Start'&&value.status!=='In review')t.timer=Date.now();
    if((value.timerAction==='Pause'||value.status==='In review')&&t.timer){t.elapsed=(t.elapsed||0)+Math.max(0,Date.now()-t.timer);delete t.timer}
    t.status=value.status;
+   for(const field of taskResultKeys)t[field]=value[field];
    if(value.comment.trim())(t.comments||=[]).push(value.comment.trim());
   });
   if(t.status!=='In review'){
@@ -485,10 +487,10 @@ document.addEventListener('click',async ev=>{
   return;
  }
  const tracked=(t.elapsed||0)+(t.timer?Date.now()-t.timer:0);
- const details=select('Repeat after completion','repeat',options(['None','Daily','Weekly','Monthly'],t.repeat||'None'))+area('Checklist (one step per line)','checklistText',(t.checklist||[]).map(item=>item.text).join('\n'))+select('Priority','priority',options(['Low','Medium','High','Urgent'],t.priority))+select('Status','status',options(taskStatuses,t.status))+input('Estimated hours','hours',t.hours,'number')+area('Comment','comment')+(t.comments||[]).map(c=>'<p>'+e(c)+'</p>').join('')+input('Attachment','attachment','','file')+download(t.file);
+ const details=select('Repeat after completion','repeat',options(['None','Daily','Weekly','Monthly'],t.repeat||'None'))+area('Checklist (one step per line)','checklistText',(t.checklist||[]).map(item=>item.text).join('\n'))+select('Priority','priority',options(['Low','Medium','High','Urgent'],t.priority))+select('Status','status',options(taskStatuses,t.status))+taskAmount('Estimated hours','hours',t.hours)+taskPlanFields(t)+taskResultFields(t)+taskResultsDetails(t)+area('Comment','comment')+(t.comments||[]).map(c=>'<p>'+e(c)+'</p>').join('')+input('Attachment','attachment','','file')+download(t.file);
  const fields=(!key?templateField():'')+input('Title','title',t.title,'text',true)+select('Assigned to','owner',nameOptions(t.owner))+projectField(t.projectId)+input('Start date','start',t.start,'date')+input('Due date','due',t.due,'date')+area('Instructions','note',t.note);
  const tracker=key?`<p>Tracked ${duration(tracked)} · ${t.timer?'Running':'Paused'}</p>${select('Timer','timerAction',options(['Keep current',t.timer?'Pause':'Start'],'Keep current'))}`:'';
- form(key?'Task details':'New task',fields+`<details class="task-options" ${key?'open':''}><summary>Priority, status and attachments</summary><div class="task-options-grid">${details}${tracker}</div></details>`,'Save task',async v=>{
+ form(key?'Task details':'New task',fields+`<details class="task-options" open><summary>Planning, results and attachments</summary><div class="task-options-grid">${details}${tracker}</div></details>`,'Save task',async v=>{
  if(v.repeat!=='None'&&!v.due)throw Error('Set a due date for the recurring task.');
  if(v.start&&v.due&&v.start>v.due)throw Error('The due date must be after the start date.');
  const f=await attach(v.attachment);if(f)t.file=f;
@@ -497,6 +499,10 @@ document.addEventListener('click',async ev=>{
  t.checklist=v.checklistText.split('\n').map(text=>text.trim()).filter(Boolean).slice(0,30).map(text=>({text:text.slice(0,250),done:(t.checklist||[]).find(item=>item.text===text)?.done||false}));
  delete v.checklistText;delete v.attachment;delete v.timerAction;delete v.comment;Object.assign(t,v);if(!key)data.tasks.unshift(t);notify('Task saved');
  });
+ const taskForm=modal.querySelector('form');
+ const estimate=taskForm.elements.hours, points=taskForm.querySelector('#task-points');
+ const updatePoints=()=>{const value=taskPoints({hours:estimate.value});points.textContent=value?value+' points':'Enter estimated hours to calculate points';};
+ estimate.addEventListener('input',updatePoints);updatePoints();
  if(!key)$('#task-template').onchange=event=>chooseTemplate(event.target.value);
  }
  if(act==='event'){openEvent(key);return}

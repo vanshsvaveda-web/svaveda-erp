@@ -84,6 +84,19 @@ function operate(access,state,command) {
   } else throw Error('Unknown workspace action.');
 }
 
+function applyTaskResults(task, values) {
+  for (const [key, limit] of [['actualOutput',1000],['proofUrl',1000]]) {
+    if (!Object.hasOwn(values,key)) continue;
+    const value = cleanText(values[key],limit);
+    task[key] = key==='proofUrl' && !/^https?:\/\//i.test(value) ? '' : value;
+  }
+  for (const key of ['actualHours','kpiActual']) {
+    if (!Object.hasOwn(values,key)) continue;
+    const value = String(values[key] ?? '').trim();
+    task[key] = value && Number.isFinite(Number(value)) && Number(value)>=0 ? Number(value) : '';
+  }
+}
+
 function advanceRecurringTasks(state){
   const added=[];
   for(const task of state.tasks){
@@ -96,10 +109,10 @@ function advanceRecurringTasks(state){
       due.setUTCDate(Math.min(wanted,last));
     }else due.setUTCDate(due.getUTCDate()+(task.repeat==='Daily'?1:7));
     const date=due.toISOString().slice(0,10);
-    const {title,owner,priority,note,projectId,hours,repeat}=task;
+    const {title,owner,priority,note,projectId,hours,repeat,department,taskType,expectedOutput,kpi,kpiTarget,kpiUnit,kpiRollup}=task;
     const id=crypto.randomUUID();
     task.nextOccurrence=id;
-    added.push({id,title,owner,priority,note,projectId,hours,repeat,repeatDay:task.repeatDay||Number(task.due.slice(-2)),status:'To do',start:date,due:date,
+    added.push({id,title,owner,priority,note,projectId,hours,repeat,department,taskType,expectedOutput,kpi,kpiTarget,kpiUnit,kpiRollup,plannedDate:date,repeatDay:task.repeatDay||Number(task.due.slice(-2)),status:'To do',start:date,due:date,
       checklist:(Array.isArray(task.checklist)?task.checklist:[]).filter(item=>typeof item?.text==='string').map(item=>({text:item.text,done:false}))});
   }
   state.tasks.unshift(...added);

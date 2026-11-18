@@ -74,6 +74,7 @@ function mergeTeamState(access, value) {
         if (edited.status==='In review' && task.status!=='In review') task.reviewAt=Date.now();
         task.status=edited.status;
       }
+      applyTaskResults(task,edited);
       if (Array.isArray(edited.comments)) task.comments = edited.comments.slice(0,100).filter(comment=>typeof comment==='string').map(comment=>comment.slice(0,2000));
       if (edited.submission && typeof edited.submission.name==='string' && edited.submission.name.length<=240 && typeof edited.submission.url==='string' && edited.submission.url.length<=940000 && /^data:[^,;]*;base64,[A-Za-z0-9+/=]+$/.test(edited.submission.url)) task.submission={name:edited.submission.name,url:edited.submission.url};
       if (Array.isArray(task.checklist)&&Array.isArray(edited.checklist)) task.checklist=task.checklist.map((item,i)=>({...item,done:edited.checklist[i]?.text===item.text?edited.checklist[i].done===true:item.done}));
