@@ -1,13 +1,27 @@
 let projectSelection='', projectView='List', projectTab='Tasks';
 
 function openQuickLead(){
+ const people=[...new Set([...data.people.map(person=>person.name),...(roleSeats||[]).filter(seat=>seat.email).map(seat=>seat.name)])].filter(name=>name&&name!==currentName);
  form('Quick capture',input('Expert name','name','','text',true)+input('Phone (optional)','phone','','tel')+
   input('Instagram @handle or profile link (optional)','instagram')+area('Note (optional)','instructions')+
-  '<p>Creates a reminder in My Day for tomorrow. Add a phone later to sync the lead to Google Sheets.</p>',
+  select('Who should fill in the details?','researcher','<option value="">I’ll handle it</option>'+options(people,''))+
+  '<p>Choose a teammate to collect the details and send the lead back to you for outreach.</p>',
  'Save lead',values=>{
+  const {researcher,...details}=values;
   const lead={id:id(),status:'New',source:'Manual',quickCaptured:true};
-  setLead(lead,{...values,owners:[currentName],due:day(1),action:values.instagram?'Review Instagram lead':'Review new lead'});
+  if(researcher)lead.researchReturnTo=currentName;
+  setLead(lead,{...details,owners:[researcher||currentName],due:day(1),
+    action:researcher?'Complete expert details':values.instagram?'Review Instagram lead':'Review new lead'});
  },'compact');
+}
+
+function openLeadResearch(lead){
+ form('Complete expert details · '+e(lead.name),
+  '<p>Send the details back to '+e(lead.researchReturnTo)+' for outreach.</p>'+
+  input('Expert name','name',lead.name,'text',true)+input('Phone','phone',lead.phone,'tel')+
+  input('Instagram @handle or profile link','instagram',lead.instagram)+input('Specialization','area',lead.area)+
+  (lead.instructions?'<p>'+e(lead.instructions)+'</p>':'')+area('Research notes','researchNotes',lead.researchNotes),
+  'Send back for outreach',values=>({type:'lead-research-complete',id:lead.id,...values}),'compact');
 }
 
 function followUpHistory(lead){
@@ -19,6 +33,11 @@ function followUpHistory(lead){
 function openLeadOutcome(key){
  const lead=data.leads.find(item=>item.id===key);
  if(!lead)return;
+ if(lead.researchReturnTo){
+  if(assignedTo(lead,currentName)){openLeadResearch(lead);return;}
+  notify('Details are assigned to '+assigneeLabel(lead)+'. The lead returns to '+lead.researchReturnTo+' after submission.');
+  return;
+ }
  const phone=normalized(lead.phone||'');
  const instagram=leadInstagram(lead.instagram||leadColumn(lead,'IG (Personal)'));
  const contact=(phone||instagram)&&!['Do not contact','Invalid number','Not interested','Onboarded','Program listed'].includes(lead.status);
@@ -27,7 +46,7 @@ function openLeadOutcome(key){
  const launch=contact?`<div class="follow-up-contact">${select('Contact method','method',options(methods,method))}<a class="contact-action" id="follow-up-contact">Open contact</a></div>`:'';
  const count=loggedFollowUps(lead).length;
  const context=[assigneeLabel(lead)||'Unassigned',count+' previously logged',lead.action,lead.due&&'Due '+lead.due].filter(Boolean).join(' · ');
- form('Follow-up #'+(count+1)+' · '+e(lead.name),'<p>'+e(context)+'</p>'+launch+
+ form('Follow-up #'+(count+1)+' · '+e(lead.name),'<p>'+e(context)+'</p>'+(lead.researchNotes?'<p><strong>Research notes:</strong> '+e(lead.researchNotes)+'</p>':'')+launch+
  select('Outcome','status',options(statuses,lead.status))+input('Next step','action','')+
  input('Follow-up date','due',lead.due>=day()?lead.due:'','date')+area('Notes','note','')+followUpHistory(lead),
  'Save follow-up',value=>({type:'lead-outcome',id:key,...value}), 'compact');

@@ -11,9 +11,12 @@ function audit(state,access,action,subject) {
 
 function operate(access,state,command) {
   const employee = access.role === 'Employee';
-  if (command.type === 'lead-outcome') {
+  if(command.type==='lead-research-complete'){
+    completeLeadResearch(access,state,command);
+  } else if (command.type === 'lead-outcome') {
     const lead = state.leads.find(item => item.id === command.id && (!employee || assignedTo(item,access.name)));
     if (!lead) throw Error('Lead is unavailable.');
+    if (lead.researchReturnTo) throw Error('Send the expert details back to the founder before logging outreach.');
     if (lead.status === 'Do not contact' && employee) throw Error('This lead has opted out.');
     if (!leadOutcomes.has(command.status)) throw Error('Choose a valid outcome.');
     const due = command.due || '';
@@ -122,4 +125,35 @@ function groupExpertOnboardingTasks(state) {
     state.projects.unshift(project);
   }
   for(const task of tasks)task.projectId=project.id;
+}
+
+function completeLeadResearch(access,state,command) {
+  const lead=state.leads.find(item=>item.id===command.id);
+  if(!lead?.researchReturnTo||!assignedTo(lead,access.name))throw Error('This research handoff is unavailable.');
+  const name=cleanText(command.name,160);
+  const phone=cleanText(command.phone,40);
+  const rawInstagram=cleanText(command.instagram,200);
+  const instagram=leadInstagram(rawInstagram);
+  const area=cleanText(command.area,250);
+  const researchNotes=cleanText(command.researchNotes,3000);
+  if(!name||(phone&&!sheetPhone(phone))||(rawInstagram&&!instagram))throw Error('Check the name, phone number and Instagram profile.');
+  if(lead.sheetSnapshot?.phone&&!phone)throw Error('Keep a phone number on leads already synced to Google Sheets.');
+  if(!phone&&!instagram&&!researchNotes)throw Error('Add a contact detail or a note about what you found.');
+  if(state.leads.some(item=>item!==lead&&((phone&&sheetPhone(item.phone)===sheetPhone(phone))||
+    (instagram&&leadInstagram(item.instagram)===instagram))))throw Error('Another lead already uses this phone or Instagram profile.');
+  const founder=lead.researchReturnTo;
+  const due=todayIST();
+  const action=phone?'Initial call':instagram?'Follow up on Instagram':'Review expert research';
+  for(const task of state.tasks.filter(item=>item.lead===lead.id&&item.status!=='Done')){
+    task.status='Done';
+    if(task.timer)task.elapsed=(task.elapsed||0)+Math.max(0,Date.now()-task.timer);
+    delete task.timer;
+  }
+  Object.assign(lead,{name,phone,instagram,area,researchNotes,action,due});
+  setAssignees(lead,[founder]);
+  delete lead.researchReturnTo;
+  state.tasks.unshift({id:crypto.randomUUID(),title:action+' · '+name,lead:lead.id,
+    owner:founder,owners:[founder],due,status:'To do',priority:lead.priority||'Medium',
+    note:researchNotes,handoffReady:true});
+  audit(state,access,'Returned expert details to '+founder,name);
 }

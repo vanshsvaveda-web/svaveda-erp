@@ -466,7 +466,9 @@ document.addEventListener('click',async ev=>{
  if(act==='lead'){
  const l=data.leads.find(x=>x.id===key)||{id:id(),status:'New',source:'Manual'};
  const links=btn('Follow up','outcome',l.id);
- const history=key?followUpHistory(l):'';
+ const handoff=l.researchReturnTo?'<p>Details assigned to '+e(assigneeLabel(l))+' · Returns to '+e(l.researchReturnTo)+'</p>':
+  l.researchNotes?'<p><strong>Research notes:</strong> '+e(l.researchNotes)+'</p>':'';
+ const history=key?handoff+followUpHistory(l):'';
  if(isEmployee()){readRecord(e(l.name),links+'<p>'+e([l.status,l.action,l.due].filter(Boolean).join(' · '))+'</p><p>'+e(l.instructions)+'</p>'+leadSheetDetails(l)+history);return}
  form(key?'Edit expert lead':'Add expert lead',input('Name','name',l.name,'text',true)+input('Phone','phone',l.phone,'tel',!l.quickCaptured||Boolean(l.sheetSnapshot?.phone))+input('Instagram','instagram',l.instagram)+input('Specialization','area',l.area)+select('ERP stage','status',options(statuses,l.status))+assigneePicker(l)+input('Next action','action',l.action)+input('Due date','due',l.due,'date')+area('Instructions','instructions',l.instructions)+
  (data.sheetLink||l.sheetSnapshot?select('Lead Status','sheetStage',options(['','Followup','Communication','Call Confirmed','Call Concluded'],l.sheetStage))+
@@ -491,6 +493,8 @@ document.addEventListener('click',async ev=>{
  if(act==='task'){
  if(modal.open)modal.close();
  const t=data.tasks.find(x=>x.id===key)||{id:id(),status:'To do',priority:'Medium',start:day(),due:day(),projectId:page==='Projects'?projectSelection:''};
+ const researchLead=t.status!=='Done'&&t.lead&&data.leads.find(lead=>lead.id===t.lead&&lead.researchReturnTo&&assignedTo(lead,currentName));
+ if(researchLead){openLeadResearch(researchLead);return;}
  if(isEmployee()){
   if(t.status==='Done'){readRecord(e(t.title),'<p>Completed</p><p>'+e(t.note)+'</p>'+taskResultsDetails(t)+download(t.file)+download(t.submission));return}
   form(e(t.title),'<p>'+e([t.due,t.priority,t.note].filter(Boolean).join(' · '))+'</p>'+taskResultsDetails(t)+download(t.file)+select('Status','status',options(['To do','In progress','Blocked','In review'],t.status==='Rework'?'In progress':t.status))+select('Timer','timerAction',options(['Keep current',t.timer?'Pause':'Start'],'Keep current'))+'<p>Tracked '+duration((t.elapsed||0)+(t.timer?Math.max(0,Date.now()-t.timer):0))+'</p>'+taskChecklist(t)+taskResultFields(t)+area('Work submission or comment','comment')+input('Submission attachment','submission','','file')+(t.submission?download(t.submission):'')+(t.comments||[]).map(c=>'<p>'+e(c)+'</p>').join(''),'Update task',async value=>{
@@ -682,7 +686,7 @@ function activityAlerts(state){
     add('done:'+task.id+':'+task.completedAt,'Assigned task completed',[task.title,task.completedBy&&'Completed by '+task.completedBy,assigneeLabel(task)].filter(Boolean).join(' · '),task.completedAt,'task',task.id);
    continue;
   }
-  if(mine&&task.assignedAt>=cutoff)add('assigned:'+task.id+':'+task.assignedAt,'Task assigned',task.title,task.assignedAt,'task',task.id);
+  if(mine&&task.assignedAt>=cutoff)add('assigned:'+task.id+':'+task.assignedAt,task.handoffReady?'Expert details ready':'Task assigned',task.title,task.assignedAt,'task',task.id);
   if(mine&&status==='Rework')add('rework:'+task.id+':'+(task.statusChangedAt||0),'Task returned for changes',task.title,task.statusChangedAt,'task',task.id);
   if(managers&&status==='In review')add('review:'+task.id+':'+(task.reviewAt||0),'Task awaiting review',task.title,task.reviewAt,'ops-decision','Task|'+task.id);
   if(mine&&status!=='In review'&&task.due&&task.due<=today)
