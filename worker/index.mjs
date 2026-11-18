@@ -50,7 +50,7 @@ async function workspace(request, env) {
   }
   if (revision !== access.revision) return json({ error: 'The workspace changed in another tab. Reload to get the latest records.' }, 409);
   if (!command && access.role !== 'Employee') access.priorLeadOwners = new Map((access.state?.leads||[]).map(lead=>[lead.id,assigneeLabel(lead)]));
-  const priorTasks = new Map((access.state?.tasks || []).map(task=>[task.id,{status:task.status,completedAt:task.completedAt}]));
+  const priorTasks = new Map((access.state?.tasks || []).map(task=>[task.id,{status:task.status,completedAt:task.completedAt,completedBy:task.completedBy,assignedAt:task.assignedAt,statusChangedAt:task.statusChangedAt,owners:assigneeLabel(task)}]));
   const priorLeads = new Map((access.state?.leads||[]).map(lead=>[lead.id,{...lead}]));
   let next;
   if (command) {
@@ -92,10 +92,24 @@ async function workspace(request, env) {
   }
   for (const task of next.tasks) {
     const prior = priorTasks.get(task.id);
-    if (task.status !== 'Done') delete task.completedAt;
-    else if (prior?.status !== 'Done') task.completedAt = Date.now();
-    else if (prior.completedAt) task.completedAt = prior.completedAt;
-    else delete task.completedAt;
+    const now=Date.now();
+    if (assigneeLabel(task) && assigneeLabel(task)!==prior?.owners) task.assignedAt=now;
+    else if (prior?.assignedAt) task.assignedAt=prior.assignedAt;
+    else delete task.assignedAt;
+    if (task.status!==prior?.status) task.statusChangedAt=now;
+    else if (prior.statusChangedAt) task.statusChangedAt=prior.statusChangedAt;
+    else delete task.statusChangedAt;
+    if (task.status === 'Done' && prior?.status !== 'Done') {
+      task.completedAt=now;
+      task.completedBy=access.name;
+    } else if (task.status==='Done' && prior?.completedAt) {
+      task.completedAt=prior.completedAt;
+      if(prior.completedBy)task.completedBy=prior.completedBy;
+      else delete task.completedBy;
+    } else {
+      delete task.completedAt;
+      delete task.completedBy;
+    }
   }
   groupExpertOnboardingTasks(next);
   advanceRecurringTasks(next);

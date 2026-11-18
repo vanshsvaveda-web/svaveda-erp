@@ -71,7 +71,7 @@ function operate(access,state,command) {
       const checkIn=stamp(request.correction.in), checkOut=stamp(request.correction.out);
       records[request.start]={in:checkIn,out:checkOut,breakMs:Math.min(Math.max(0,previous.breakMs||0),checkOut-checkIn)};
     }
-    if (request) Object.assign(request,{status:approved?'Approved':'Returned',decisionNote:note,reviewer:access.name});
+    if (request) Object.assign(request,{status:approved?'Approved':'Returned',decisionNote:note,reviewer:access.name,decisionAt:Date.now()});
     audit(state,access,approved?'Approved':'Returned',task?.title||request.kind+' · '+request.owner);
   } else throw Error('Unknown workspace action.');
 }

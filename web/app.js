@@ -153,10 +153,10 @@ function renderPersonal(){
  ${panel('My work',`<div class="toolbar filter-tabs" aria-label="My work filters">${tabs}</div>`+(visible.length?visible.map(dayTaskRow).join(''):empty('No tasks in this queue.'))+`<div class="panel-foot">${btn('All my tasks','personal-tasks','Mine')}</div>`)}
  ${followUps.length?panel('Expert follow-ups due',followUps.slice(0,6).map(lead=>listItem(lead.name,'Due '+lead.due,btn('Follow up','outcome',lead.id))).join('')):''}
  </div>
- <div>${panel('My schedule',dayAgenda())}
+ <div>${notificationPanel()}${panel('My schedule',dayAgenda())}
  ${isFounder()?'':panel('My attendance',attendanceCard())}</div></div>
- <details class="day-secondary"><summary>Updates, requests${isEmployee()?'':' and reviews'}</summary>
- <div class="split"><div>${panel('Updates',myDayUpdates())}${personalRequests()}</div><div>
+ <details class="day-secondary"><summary>Requests${isEmployee()?'':' and reviews'}</summary>
+ <div class="split"><div>${personalRequests()}</div><div>
  ${!isEmployee()?panel('Pending reviews',reviewRows().slice(0,3).map(item=>listItem(item.title,item.owner||'Unassigned',btn('Review','ops-decision',item.kind+'|'+item.id))).join('')||empty('Nothing waiting for review.')):''}
  </div></div></details>`;
 }
@@ -190,7 +190,7 @@ function renderHome(open,unassigned,due){
  ui.innerHTML=`<div class="overview-heading"><div><div class="day-date">${e(date)}</div><h1>Workspace overview</h1></div><div class="actions">${btn('Review queue','nav','Review Queue')}${btn('＋ New task','task','',true)}</div></div>
  <div class="snapshot">${bars.map(([label,value,target,color,icon])=>`<button class="snapshot-card" data-act="home-link" data-key="${target}" data-label="${label}"><span class="snapshot-icon ${color}" aria-hidden="true">${icon}</span><span class="snapshot-label">${label}</span><strong>${value}</strong><span class="snapshot-arrow" aria-hidden="true">›</span></button>`).join('')}</div>
  <div class="split home-columns"><div>${panel('Team tasks',taskRows(tasks.slice(0,6))+`<div class="panel-foot">${btn('View tasks','nav','Tasks')}</div>`)}${panel('Expert follow-ups',followUps.slice(0,6).map(l=>listItem(l.name,l.owner||'Unassigned',btn('Follow up','outcome',l.id))).join('')||empty('No follow-ups due.'))}</div>
- <div>${isFounder()?'':panel('Attendance',attendanceCard())}${panel('Today’s meetings',meetings.map(item=>listItem(item.title,[eventTime(item.time),item.owner].filter(Boolean).join(' · '),btn('Open','event',item.id))).join('')||empty('No meetings today.'))}</div></div>`;
+ <div>${notificationPanel()}${isFounder()?'':panel('Attendance',attendanceCard())}${panel('Today’s meetings',meetings.map(item=>listItem(item.title,[eventTime(item.time),item.owner].filter(Boolean).join(' · '),btn('Open','event',item.id))).join('')||empty('No meetings today.'))}</div></div>`;
 
 }
 
@@ -254,7 +254,7 @@ function render(){
 
  }
  if(page==='Tasks'){
- const scope=personalTaskScope?data.tasks.filter(task=>assignedTo(task,currentName)):data.tasks.filter(task=>!(task.lead&&task.projectId));
+ const scope=personalTaskScope?data.tasks.filter(task=>assignedTo(task,currentName)):data.tasks;
  const waiting=task=>task.status!=='Done'&&task.status!=='In review';
  const tasks=scope.filter(t=>taskFilter==='All'||taskFilter==='Open'&&t.status!=='Done'||
  taskFilter==='Mine'&&t.status!=='Done'&&assignedTo(t,currentName)||
@@ -263,12 +263,21 @@ function render(){
  taskFilter==='Overdue'&&waiting(t)&&t.due&&t.due<day()||
  taskFilter==='Completed'&&t.status==='Done');
  const filters=personalTaskScope?['Mine','Today','Overdue','Review','Completed']:['Open','Today','Overdue','Review','Completed','All'];
- const list=tasks.length?table(['Task','Assignee','Due date','Points','Status'],tasks.map(t=>`<tr><td><button class="link" data-act="task" data-key="${e(t.id)}">${e(t.title)}</button></td><td>${assigneeLinks(t)}</td><td>${e(t.due||'—')}</td><td>${taskPoints(t)||'—'}</td><td>${pill(t.status)}</td></tr>`)):empty('No tasks in this view.');
- const dated=tasks.filter(task=>task.due).sort((a,b)=>a.due.localeCompare(b.due));
- const days=[...new Set(dated.map(task=>task.due))];
- const schedule=days.length?days.map(date=>`<div class="task-date-group"><h3>${e(calLabel(date,{weekday:'long',day:'numeric',month:'short'}))}</h3>${taskRows(dated.filter(task=>task.due===date))}</div>`).join(''):empty('No dated tasks in this view.');
- ui.innerHTML=title(personalTaskScope?'My tasks':'Work',isEmployee()?'Open a task to update or submit your work.':'Assign work, track time and review submissions.',btn('Performance','nav','Performance')+(isEmployee()?'':btn('＋ New task','task','',true)))+workProjects()+
- `<div class="panel"><div class="toolbar view-toolbar"><div class="filter-tabs" aria-label="Task filters">${filters.map(name=>`<button data-act="task-tab" data-key="${name}" aria-pressed="${name===taskFilter}">${name==='Mine'?'All open':name}</button>`).join('')}</div><div class="segments" aria-label="Task view">${['List','Board','Due dates'].map(name=>`<button data-act="task-view" data-key="${name}" aria-pressed="${name===taskView}">${name}</button>`).join('')}</div></div>${taskView==='List'?list:taskView==='Board'?taskBoard(tasks):schedule}</div>`;
+ const taskViewContent=items=>{
+  if(taskView==='Board')return taskBoard(items);
+  if(taskView==='List')return table(['Task','Assignee','Due date','Points','Status'],items.map(t=>`<tr><td>${btn(e(t.title),'task',t.id)}</td><td>${assigneeLinks(t)}</td><td>${e(t.due||'—')}</td><td>${taskPoints(t)||'—'}</td><td>${pill(t.status)}</td></tr>`));
+  const dated=items.filter(task=>task.due).sort((a,b)=>a.due.localeCompare(b.due));
+  const days=[...new Set(dated.map(task=>task.due))];
+  const undated=items.filter(task=>!task.due);
+  return days.map(date=>`<div class="task-date-group"><h3>${e(calLabel(date,{weekday:'long',day:'numeric',month:'short'}))}</h3>${taskRows(dated.filter(task=>task.due===date))}</div>`).join('')+
+   (undated.length?`<div class="task-date-group"><h3>No due date</h3>${taskRows(undated)}</div>`:'');
+ };
+ const projects=new Map(data.projects.map(project=>[project.id,project]));
+ const standalone=tasks.filter(task=>!projects.has(task.projectId));
+ const groups=[...projects].map(([key,project])=>({project,items:tasks.filter(task=>task.projectId===key)})).filter(group=>group.items.length);
+ const grouped=groups.map(({project,items})=>`<details class="work-project-group"><summary><strong>${e(project.name)}</strong><span>${items.length} ${items.length===1?'task':'tasks'}</span></summary><div class="toolbar">${btn('Open project','ops-project',project.id)}</div>${taskViewContent(items)}</details>`).join('');
+ ui.innerHTML=title(personalTaskScope?'My tasks':'Work',isEmployee()?'Open a task to update or submit your work.':'Assign work, track time and review submissions.',btn('Projects','ops-project')+btn('Performance','nav','Performance')+(isEmployee()?'':btn('＋ New task','task','',true)))+
+ `<div class="panel"><div class="toolbar view-toolbar"><div class="filter-tabs" aria-label="Task filters">${filters.map(name=>`<button data-act="task-tab" data-key="${name}" aria-pressed="${name===taskFilter}">${name==='Mine'?'All open':name}</button>`).join('')}</div><div class="segments" aria-label="Task view">${['List','Board','Due dates'].map(name=>`<button data-act="task-view" data-key="${name}" aria-pressed="${name===taskView}">${name}</button>`).join('')}</div></div>${grouped}${standalone.length?taskViewContent(standalone):tasks.length?'':empty('No tasks match this filter.')}</div>`;
 
  }
  if(page==='Review Queue'){renderReviewQueue();return}
@@ -381,6 +390,9 @@ document.addEventListener('click',async ev=>{
  const b=ev.target.closest('[data-act]');if(!b)return;
  if(busy)return;
  const {act,key}=b.dataset;
+ if(b.dataset.notificationId){markNotifications([b.dataset.notificationId]);b.closest('.notification-row')?.removeAttribute('data-unread');}
+ if(act==='notifications-read'){markNotifications(activityAlerts(data).map(item=>item.id));render();return;}
+ if(act==='desktop-enable'){void enableDesktopNotifications();return;}
  if(act==='sheet-disconnect'&&isSuperAdmin()){
   form('Disconnect Google Sheet','<p>Stop automatic pulls from this Sheet. Imported leads stay in the workspace.</p>','Disconnect',()=>{delete data.sheetLink;delete data.sheetSyncedAt;sheetError=''});
   return;
@@ -650,31 +662,54 @@ function taskChecklist(task){
  const items=task.checklist||[];
  return items.length?`<fieldset><legend>Checklist</legend>${items.map((item,i)=>`<label class="checklist-step"><input type="checkbox" name="step${i}" ${item.done?'checked':''}> ${e(item.text)}</label>`).join('')}</fieldset>`:'';
 }
-let alertScan=false;
+let alertScan=false, messageAlerts=[];
+const recentNotificationDays=30;
 function activityAlerts(state){
  const today=day(), entries=[];
- for(const task of state.tasks.filter(task=>assignedTo(task,currentName)&&task.status!=='Done')){
-  entries.push(['assigned:'+task.id,'Task assigned']);
-  if(task.status==='Rework')entries.push(['rework:'+task.id+':'+JSON.stringify(task.comments||[]),'Task returned for changes']);
-  if(task.status!=='In review'&&task.due&&task.due<=today)entries.push(['task-due:'+task.id+':'+task.due,'Task due or overdue']);
+ const cutoff=Date.now()-recentNotificationDays*86400000;
+ const managers=!isEmployee();
+ const add=(id,label,subject,at,act,key)=>entries.push({id,label,subject,at:Number(at)||0,act,key});
+ for(const task of state.tasks){
+  const mine=assignedTo(task,currentName), status=task.status;
+  if(status==='Done'){
+   if((mine||managers)&&assignees(task).length&&task.completedAt>=cutoff)
+    add('done:'+task.id+':'+task.completedAt,'Assigned task completed',[task.title,task.completedBy&&'Completed by '+task.completedBy,assigneeLabel(task)].filter(Boolean).join(' · '),task.completedAt,'task',task.id);
+   continue;
+  }
+  if(mine&&task.assignedAt>=cutoff)add('assigned:'+task.id+':'+task.assignedAt,'Task assigned',task.title,task.assignedAt,'task',task.id);
+  if(mine&&status==='Rework')add('rework:'+task.id+':'+(task.statusChangedAt||0),'Task returned for changes',task.title,task.statusChangedAt,'task',task.id);
+  if(managers&&status==='In review')add('review:'+task.id+':'+(task.reviewAt||0),'Task awaiting review',task.title,task.reviewAt,'ops-decision','Task|'+task.id);
+  if(mine&&status!=='In review'&&task.due&&task.due<=today)
+   add('task-due:'+task.id+':'+task.due,task.due===today?'Task due today':'Task overdue',task.title,0,'task',task.id);
  }
- for(const lead of state.leads.filter(lead=>assignedTo(lead,currentName)&&lead.due&&lead.due<=today&&!['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status)))entries.push(['lead:'+lead.id+':'+lead.due,'Expert follow-up due']);
- for(const item of state.events.filter(item=>item.date===today&&item.category!=='Holiday'&&(!item.owner||item.owner===currentName)))entries.push(['event:'+item.id+':'+item.date,'Meeting on your calendar today']);
- for(const request of (state.requests||[])){
-  if(requesassignedTo(t,currentName)&&request.status!=='Pending')entries.push(['request:'+request.id+':'+request.status,'Request decision available']);
-  if(!isEmployee()&&request.status==='Pending')entries.push(['review-request:'+request.id,'Request awaiting review']);
+ for(const lead of state.leads.filter(lead=>assignedTo(lead,currentName)&&lead.due&&lead.due<=today&&!['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status)))
+  add('lead:'+lead.id+':'+lead.due,'Expert follow-up due',lead.name,0,'outcome',lead.id);
+ for(const event of state.events.filter(item=>item.date===today&&item.category!=='Holiday'&&(!item.owner||item.owner===currentName)))
+  add('event:'+event.id+':'+event.date,'Scheduled today',event.title,0,'event',event.id);
+ for(const request of state.requests||[]){
+  if(assignedTo(request,currentName)&&request.status!=='Pending')
+   add('request:'+request.id+':'+request.status,'Request '+request.status.toLowerCase(),request.kind,request.decisionAt||request.at,'nav','Attendance');
+  if(managers&&request.status==='Pending')
+   add('review-request:'+request.id,'Request awaiting review',[request.kind,request.owner].filter(Boolean).join(' · '),request.at,'ops-decision','Request|'+request.id);
  }
- if(!isEmployee())for(const task of state.tasks.filter(task=>task.status==='In review'))entries.push(['review:'+task.id+':'+(task.reviewAt||''),'Task awaiting review']);
- return entries;
+ return [...entries,...messageAlerts].sort((a,b)=>b.at-a.at);
 }
-function myDayUpdates(){
- const totals=new Map();
- for(const [,label] of activityAlerts(data)){
-  if(label==='Task assigned')continue;
-  totals.set(label,(totals.get(label)||0)+1);
- }
- return ([...totals].map(([label,count])=>listItem(label,count+' update'+(count===1?'':'s'))).join('')||empty('You’re caught up.'))+
-  '<div class="panel-foot">'+btn('Open inbox','desktop-inbox')+'</div>';
+const notificationReadKey=()=> 'svaveda-notifications-v1-'+currentName;
+function readNotifications(){
+ try{return new Set(JSON.parse(localStorage.getItem(notificationReadKey())||'[]'));}catch{return new Set();}
+}
+function markNotifications(ids){
+ try{localStorage.setItem(notificationReadKey(),JSON.stringify([...new Set([...readNotifications(),...ids])].slice(-2000)));}catch{}
+}
+function notificationPanel(full=false){
+ const read=readNotifications();
+ const items=activityAlerts(data).sort((a,b)=>Number(read.has(a.id))-Number(read.has(b.id)));
+ const unread=items.filter(item=>!read.has(item.id)).length;
+ const rows=items.slice(0,full?100:6).map(item=>{
+  const description=[item.subject,item.at?calendarStamp(item.at):''].filter(Boolean).join(' · ');
+  return `<div class="item row notification-row" ${read.has(item.id)?'':'data-unread="true"'}><div><strong>${e(item.label)}</strong><p>${e(description)}</p></div><button type="button" data-act="${item.act}" data-key="${e(item.key)}" data-notification-id="${e(item.id)}">Open</button></div>`;
+ }).join('')||empty('You’re caught up.');
+ return panel('Notifications'+(unread?' · '+unread+' unread':''),rows+`<div class="panel-foot actions">${unread?btn('Mark all read','notifications-read'):''}${full?'':btn('View all','desktop-inbox')}</div>`);
 }
 async function updateWorkspace(){
  const response=await fetch('/api/workspace');
@@ -688,7 +723,7 @@ async function updateWorkspace(){
  return true;
 }
 async function refreshAlerts(baseline=false){
- if(alertScan||busy||!data||typeof Notification==='undefined'||Notification.permission!=='granted')return;
+ if(alertScan||busy||!data)return;
  alertScan=true;
  try{
   const startRevision=revision;
@@ -696,29 +731,30 @@ async function refreshAlerts(baseline=false){
   if(!response.ok)return;
   const result=await response.json();
   if(!result.data||result.role!==role||result.name!==currentName)return;
-  const entries=activityAlerts(result.data);
+  const beforeMessages=messageAlerts.map(item=>item.id).join('|');
   try{
    const messages=await messageRequest();
-   for(const message of messages.messages||[])if(message.recipient===messages.user&&message.sender!==messages.user)
-    entries.push(['message:'+message.id,'New workspace message']);
+   messageAlerts=(messages.messages||[]).filter(message=>message.recipient===messages.user&&message.sender!==messages.user).slice(-20)
+    .map(message=>({id:'message:'+message.id,label:'New workspace message',subject:'Open Messages to read it',at:Number(message.created)||0,act:'nav',key:'Messages'}));
   }catch{}
+  const entries=activityAlerts(result.data);
   const key='svaveda-desktop-v1-'+currentName;
   const previous=JSON.parse(localStorage.getItem(key)||'null');
   const seen=new Set(Array.isArray(previous)?previous:[]);
-  const added=entries.filter(([id])=>!seen.has(id));
-  if(previous&&!baseline&&added.length){
-   const categories=[...new Set(added.map(([,label])=>label))];
+  const added=entries.filter(item=>!seen.has(item.id));
+  if(previous&&!baseline&&added.length&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
+   const categories=[...new Set(added.map(item=>item.label))];
    const notification=new Notification('SvaVeda Workspace',{body:categories.length===1?categories[0]:added.length+' new workspace updates',tag:'svaveda-workspace'});
    notification.onclick=()=>{window.focus();if(!modal.open&&!busy){page=categories.length===1&&categories[0]==='New workspace message'?'Messages':'Inbox';render()}notification.close()};
   }
-  localStorage.setItem(key,JSON.stringify([...seen,...added.map(([id])=>id)].slice(-2000)));
+  localStorage.setItem(key,JSON.stringify([...seen,...added.map(item=>item.id)].slice(-2000)));
   if(!busy&&!modal.open&&!jump.open&&revision===startRevision&&result.revision>revision&&page!=='Messages'&&page!=='Integrations'){
    data=result.data;revision=result.revision;roleSeats=result.seats;
    committed=structuredClone(data);render();
-  }
+  }else if(!busy&&!modal.open&&!jump.open&&['My Day','Overview','Inbox'].includes(page)&&beforeMessages!==messageAlerts.map(item=>item.id).join('|'))render();
  }catch{}finally{alertScan=false}
 }
-$('#desktop-alerts').onclick=async()=>{
+async function enableDesktopNotifications(){
  if(typeof Notification==='undefined'){notify('Desktop notifications are unavailable in this browser.');return}
  if(Notification.permission==='denied'){notify('Allow notifications for this Site in your browser settings.');return}
  if(Notification.permission==='default'){
@@ -726,7 +762,7 @@ $('#desktop-alerts').onclick=async()=>{
   if(status==='granted'){await refreshAlerts(true);notify('Desktop alerts enabled. Keep the ERP open.')}
   return;
  }
- page='Inbox';render();
-};
+}
+$('#desktop-alerts').onclick=()=>{page='Inbox';render();void refreshAlerts();};
 setInterval(()=>{void refreshAlerts();void processSheetQueue().finally(autoPullSheet)},60000);
 load();

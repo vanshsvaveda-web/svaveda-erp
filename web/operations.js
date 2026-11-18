@@ -233,17 +233,8 @@ function chooseTemplate(name){
  if(!fields.note.value)fields.note.value=note;
 }
 function renderInbox(){
- const today=day();
- const tasks=data.tasks.filter(task=>assignedTo(task,currentName)&&task.status!=='Done'&&task.status!=='In review');
- const followUps=data.leads.filter(lead=>assignedTo(lead,currentName)&&lead.due&&lead.due<=today&&
-  !['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status));
- const attention=tasks.filter(task=>task.status==='Rework'||task.due&&task.due<=today);
- ui.innerHTML=title('Inbox','Updates that need your attention.',btn('Refresh','inbox-refresh'))+
- `<div class="split inbox-layout"><div>${panel('My task updates · '+attention.length,attention.map(task=>listItem(task.title,
- [task.status==='Rework'?'Returned for changes':task.due<today?'Overdue':'Due today',task.due].filter(Boolean).join(' · '),btn('Open task','task',task.id))).join('')||empty('No task updates need attention.'))}
- ${panel('Expert follow-ups · '+followUps.length,followUps.map(lead=>listItem(lead.name,'Due '+lead.due,btn('Follow up','outcome',lead.id))).join('')||empty('No follow-ups due.'))}</div>
- <div>${!isEmployee()?panel('Founder reviews',listItem('Pending submissions',reviewRows().length+' to review',btn('Review queue','nav','Review Queue'))):''}
- ${personalRequests()}</div></div>`;
+ ui.innerHTML=title('Notifications','Task updates, follow-ups, requests and messages.',btn('Enable desktop alerts','desktop-enable')+btn('Refresh','inbox-refresh'))+
+ notificationPanel(true);
 }
 function renderPipeline(){
  const stages=[
@@ -256,14 +247,6 @@ function renderPipeline(){
   const leads=data.leads.filter(lead=>statuses.includes(lead.status));
   return `<article><div class="board-heading"><strong>${stage}</strong><span class="tab-count">${leads.length}</span></div>${leads.map(lead=>`<div class="pipeline-record"><button class="link" data-act="lead" data-key="${e(lead.id)}">${e(lead.name)}</button><small>${e(assigneeLabel(lead)||'Unassigned')}</small>${pill(lead.status)}<p>${e(lead.action||'No next action')}${lead.due?' · '+e(lead.due):''}</p>${stage==='Closed'||lead.status==='Onboarded'?'':btn('Follow up','outcome',lead.id)}</div>`).join('')||empty('No leads')}</article>`;
  }).join('')}</div></div>`;
-}
-
-function workProjects(){
- return panel('Projects',(isEmployee()?'':`<div class="toolbar">${btn('New project','project','',true)}</div>`)+
- (data.projects.map(item=>{
-   const open=data.tasks.filter(task=>task.projectId===item.id&&task.status!=='Done').length;
-   return listItem(item.name,[open+' open '+(open===1?'task':'tasks'),item.owner,item.due].filter(Boolean).join(' · '),btn('Open','ops-project',item.id));
- }).join('')||empty('No projects yet.')));
 }
 
 let performancePeriod='Daily', performanceDate='';
