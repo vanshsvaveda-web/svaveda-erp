@@ -54,8 +54,10 @@ function scopedState(access) {
     visible.people = [...byName.values()];
     return visible;
   }
-  return {people:[{name:access.name,role:access.role}],leads:visible.leads.filter(item=>assignedTo(item,access.name)),tasks:visible.tasks.filter(item=>assignedTo(item,access.name)),
-    projects:visible.projects.filter(item=>item.owner===access.name||item.members?.includes(access.name)),events:visible.events.filter(item=>!item.owner||item.owner===access.name),
+  const tasks=visible.tasks.filter(item=>assignedTo(item,access.name));
+  const leadProjects=new Set(tasks.filter(item=>item.lead).map(item=>item.projectId).filter(Boolean));
+  return {people:[{name:access.name,role:access.role}],leads:visible.leads.filter(item=>assignedTo(item,access.name)),tasks,
+    projects:visible.projects.filter(item=>item.owner===access.name||item.members?.includes(access.name)||leadProjects.has(item.id)),events:visible.events.filter(item=>!item.owner||item.owner===access.name),
     attendance:visible.attendance,messages:[],reviews:visible.reviews.filter(item=>item.owner===access.name),requests:(visible.requests||[]).filter(item=>item.user===access.user)};
 }
 

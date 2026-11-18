@@ -260,7 +260,10 @@ function renderPipeline(){
 
 function workProjects(){
  return panel('Projects',(isEmployee()?'':`<div class="toolbar">${btn('New project','project','',true)}</div>`)+
- (data.projects.map(item=>listItem(item.name,[item.owner,item.due].filter(Boolean).join(' · '),btn('Open','ops-project',item.id))).join('')||empty('No projects yet.')));
+ (data.projects.map(item=>{
+   const open=data.tasks.filter(task=>task.projectId===item.id&&task.status!=='Done').length;
+   return listItem(item.name,[open+' open '+(open===1?'task':'tasks'),item.owner,item.due].filter(Boolean).join(' · '),btn('Open','ops-project',item.id));
+ }).join('')||empty('No projects yet.')));
 }
 
 let performancePeriod='Daily', performanceDate='';

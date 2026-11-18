@@ -97,6 +97,7 @@ async function workspace(request, env) {
     else if (prior.completedAt) task.completedAt = prior.completedAt;
     else delete task.completedAt;
   }
+  groupExpertOnboardingTasks(next);
   advanceRecurringTasks(next);
   const payload = JSON.stringify(next);
   if (new TextEncoder().encode(payload).length > maxPayloadBytes) return json({ error:'Workspace storage limit reached.' }, 413);

@@ -109,3 +109,15 @@ function advanceRecurringTasks(state){
   }
   state.tasks.unshift(...added);
 }
+
+function groupExpertOnboardingTasks(state) {
+  const tasks=state.tasks.filter(task=>typeof task.lead==='string'&&task.lead.trim());
+  if(!tasks.length)return;
+  let project=state.projects.find(item=>item.id==='expert-onboarding')||
+    state.projects.find(item=>String(item.name??'').trim().toLowerCase()==='expert onboarding');
+  if(!project){
+    project={id:'expert-onboarding',name:'Expert Onboarding',owner:'Vansh',members:[],milestones:[]};
+    state.projects.unshift(project);
+  }
+  for(const task of tasks)task.projectId=project.id;
+}

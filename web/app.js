@@ -177,7 +177,7 @@ function dayAgenda(){
 }
 function renderHome(open,unassigned,due){
  const today=day();
- const tasks=open.slice().sort((a,b)=>(a.status!=='Rework')-(b.status!=='Rework')||(a.due||'9999').localeCompare(b.due||'9999'));
+ const tasks=open.filter(task=>!(task.lead&&task.projectId)).sort((a,b)=>(a.status!=='Rework')-(b.status!=='Rework')||(a.due||'9999').localeCompare(b.due||'9999'));
  const followUps=due;
  const meetings=data.events.filter(item=>item.date===today&&item.category!=='Holiday').sort((a,b)=>(a.time||'').localeCompare(b.time||''));
  const bars=[
@@ -254,7 +254,7 @@ function render(){
 
  }
  if(page==='Tasks'){
- const scope=personalTaskScope?data.tasks.filter(task=>assignedTo(task,currentName)):data.tasks;
+ const scope=personalTaskScope?data.tasks.filter(task=>assignedTo(task,currentName)):data.tasks.filter(task=>!(task.lead&&task.projectId));
  const waiting=task=>task.status!=='Done'&&task.status!=='In review';
  const tasks=scope.filter(t=>taskFilter==='All'||taskFilter==='Open'&&t.status!=='Done'||
  taskFilter==='Mine'&&t.status!=='Done'&&assignedTo(t,currentName)||
@@ -267,8 +267,8 @@ function render(){
  const dated=tasks.filter(task=>task.due).sort((a,b)=>a.due.localeCompare(b.due));
  const days=[...new Set(dated.map(task=>task.due))];
  const schedule=days.length?days.map(date=>`<div class="task-date-group"><h3>${e(calLabel(date,{weekday:'long',day:'numeric',month:'short'}))}</h3>${taskRows(dated.filter(task=>task.due===date))}</div>`).join(''):empty('No dated tasks in this view.');
- ui.innerHTML=title(personalTaskScope?'My tasks':'Work',isEmployee()?'Open a task to update or submit your work.':'Assign work, track time and review submissions.',btn('Performance','nav','Performance')+(isEmployee()?'':btn('＋ New task','task','',true)))+
- `<div class="panel"><div class="toolbar view-toolbar"><div class="filter-tabs" aria-label="Task filters">${filters.map(name=>`<button data-act="task-tab" data-key="${name}" aria-pressed="${name===taskFilter}">${name==='Mine'?'All open':name}</button>`).join('')}</div><div class="segments" aria-label="Task view">${['List','Board','Due dates'].map(name=>`<button data-act="task-view" data-key="${name}" aria-pressed="${name===taskView}">${name}</button>`).join('')}</div></div>${taskView==='List'?list:taskView==='Board'?taskBoard(tasks):schedule}</div>`+workProjects();
+ ui.innerHTML=title(personalTaskScope?'My tasks':'Work',isEmployee()?'Open a task to update or submit your work.':'Assign work, track time and review submissions.',btn('Performance','nav','Performance')+(isEmployee()?'':btn('＋ New task','task','',true)))+workProjects()+
+ `<div class="panel"><div class="toolbar view-toolbar"><div class="filter-tabs" aria-label="Task filters">${filters.map(name=>`<button data-act="task-tab" data-key="${name}" aria-pressed="${name===taskFilter}">${name==='Mine'?'All open':name}</button>`).join('')}</div><div class="segments" aria-label="Task view">${['List','Board','Due dates'].map(name=>`<button data-act="task-view" data-key="${name}" aria-pressed="${name===taskView}">${name}</button>`).join('')}</div></div>${taskView==='List'?list:taskView==='Board'?taskBoard(tasks):schedule}</div>`;
 
  }
  if(page==='Review Queue'){renderReviewQueue();return}
