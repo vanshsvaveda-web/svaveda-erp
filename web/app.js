@@ -68,6 +68,12 @@ function options(list,value,blank){return list.map(x=>'<option '+(x===blank?'val
 const input=(label,name,value='',type='text',required=false)=>`<label>${label}<input name="${name}" type="${type}" value="${e(value)}" ${required?'required':''}></label>`;
 const select=(label,name,opts)=>`<label>${label}<select name="${name}">${opts}</select></label>`;
 const area=(label,name,value='')=>`<label>${label}<textarea name="${name}">${e(value)}</textarea></label>`;
+function assigneePicker(record){
+ const selected=assignees(record);
+ const people=[...new Set([...selected,currentName,...data.people.map(p=>p.name),...(roleSeats||[]).filter(p=>p.email).map(p=>p.name)].filter(Boolean))];
+ return `<fieldset class="assignee-picker"><legend>Assign to</legend>${people.map(name=>`<label><input type="checkbox" name="owners" value="${e(name)}" ${selected.includes(name)?'checked':''}>${e(name)}</label>`).join('')}</fieldset>`;
+}
+const assigneeLinks=record=>assignees(record).map(ownerLink).join(', ')||'Unassigned';
 const btn=(label,act,key='',primary=false)=>`<button type="button" class="${primary?'primary':''}" data-act="${act}" data-key="${e(key)}">${label}</button>`;
 const pill=t=>{
  const tones={Done:'good',Onboarded:'good',Approved:'good','In progress':'blue',Contacted:'blue','In review':'violet','Follow-up':'violet',Pending:'amber',Blocked:'rose',Rework:'rose',Returned:'rose','Do not contact':'rose'};
@@ -104,7 +110,10 @@ function form(title,fields,submit,handler,size='regular'){
   const button=event.currentTarget.querySelector('.primary'), error=$('#error');
   button.disabled=true;busy=true;error.textContent='';
   try{
-   const command=await handler(Object.fromEntries(new FormData(event.currentTarget)));
+   const values=new FormData(event.currentTarget);
+   const fields=Object.fromEntries(values);
+   if(event.currentTarget.querySelector('.assignee-picker')) fields.owners=values.getAll('owners');
+   const command=await handler(fields);
    await save(command);
    modal.close();render();notify('Saved');
   }catch(problem){
@@ -125,10 +134,10 @@ function attendanceCard(){
  const work=a.in?duration(Math.max(0,(a.out||Date.now())-a.in-(a.breakMs||0)-(a.pause?Date.now()-a.pause:0))):'0h 0m';
  return `<div class="item"><strong>${state}</strong><p>Check-in ${clock(a.in)} · Worked ${work}</p><div class="actions">${a.out?'':!a.in?btn('Check in','attendance','in',true):btn(a.pause?'End break':'Start break','attendance','break')+btn('Check out','attendance','out',true)}</div></div>`;
 }
-const taskRows=tasks=>tasks.length?tasks.map(t=>`<div class="item task-line"><div><button class="link task-name" data-act="task" data-key="${e(t.id)}">${e(t.title)}</button><small>${[t.owner||'Unassigned',t.due?'Due '+t.due:'No due date',t.priority].filter(Boolean).map(e).join(' · ')}</small></div>${pill(t.status)}</div>`).join(''):empty('No tasks in this view.');
+const taskRows=tasks=>tasks.length?tasks.map(t=>`<div class="item task-line"><div><button class="link task-name" data-act="task" data-key="${e(t.id)}">${e(t.title)}</button><small>${[assigneeLabel(t)||'Unassigned',t.due?'Due '+t.due:'No due date',t.priority].filter(Boolean).map(e).join(' · ')}</small></div>${pill(t.status)}</div>`).join(''):empty('No tasks in this view.');
 let dayTaskQueue, agendaDate, fullCalendarOpen=false;
 function renderPersonal(){
- const today=day(), mine=data.tasks.filter(task=>task.owner===currentName);
+ const today=day(), mine=data.tasks.filter(task=>assignedTo(task,currentName));
  const active=mine.filter(task=>!['Done','In review'].includes(task.status));
  const overdue=active.filter(task=>task.due&&task.due<today);
  const current=active.filter(task=>!overdue.includes(task)&&(task.status==='Rework'||!task.due||task.due===today));
@@ -136,13 +145,13 @@ function renderPersonal(){
  const queues={Today:current,Overdue:overdue,Upcoming:upcoming,Review:mine.filter(task=>task.status==='In review')};
  dayTaskQueue||=current.length?'Today':overdue.length?'Overdue':'Today';
  const visible=queues[dayTaskQueue];
- const followUps=data.leads.filter(lead=>lead.owner===currentName&&lead.due&&lead.due<=today&&!['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status));
+ const followUps=data.leads.filter(lead=>assignedTo(lead,currentName)&&lead.due&&lead.due<=today&&!['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status));
  const date=calLabel(today,{dateStyle:'full'});
  const tabs=Object.entries(queues).map(([label,items])=>`<button data-act="day-work-filter" data-key="${label}" aria-pressed="${dayTaskQueue===label}">${label} <span class="tab-count">${items.length}</span></button>`).join('');
  ui.innerHTML=`<div class="personal-heading"><div><div class="day-date">${e(date)} · IST</div><h1>${greeting()}, ${e(currentName)}.</h1></div><div class="actions">${btn('Full calendar','personal-calendar')}${isEmployee()?btn('Request leave','ops-request','Leave',true):btn('＋ New task','task','',true)}</div></div>
  <div class="split home-columns day-workspace"><div>
  ${panel('My work',`<div class="toolbar filter-tabs" aria-label="My work filters">${tabs}</div>`+(visible.length?visible.map(dayTaskRow).join(''):empty('No tasks in this queue.'))+`<div class="panel-foot">${btn('All my tasks','personal-tasks','Mine')}</div>`)}
- ${followUps.length?panel('Expert follow-ups due',followUps.slice(0,6).map(lead=>listItem(lead.name,'Due '+lead.due,btn('Log outcome','outcome',lead.id))).join('')):''}
+ ${followUps.length?panel('Expert follow-ups due',followUps.slice(0,6).map(lead=>listItem(lead.name,'Due '+lead.due,btn('Follow up','outcome',lead.id))).join('')):''}
  </div>
  <div>${panel('My schedule',dayAgenda())}
  ${isFounder()?'':panel('My attendance',attendanceCard())}</div></div>
@@ -161,7 +170,7 @@ function dayAgenda(){
  agendaDate||=today;
  const week=weekStart(agendaDate);
  const days=Array.from({length:7},(_,index)=>calDay(week,index));
- const entries=calendarEntries().filter(item=>item.date===agendaDate&&(item.owner===currentName||item.action==='event'&&!item.owner)).sort((a,b)=>(a.time||'99').localeCompare(b.time||'99'));
+ const entries=calendarEntries().filter(item=>item.date===agendaDate&&(assignedTo(item,currentName)||item.action==='event'&&!item.owner)).sort((a,b)=>(a.time||'99').localeCompare(b.time||'99'));
  return `<div class="day-agenda"><div class="agenda-week">${btn('‹','agenda-week','-7')}<strong>${e(calLabel(agendaDate,{month:'long',year:'numeric'}))}</strong>${btn('›','agenda-week','7')}${btn('Today','agenda-date',today)}</div><div class="date-strip">${days.map(date=>`<button data-act="agenda-date" data-key="${date}" aria-label="${e(calLabel(date,{dateStyle:'full'}))}" aria-pressed="${date===agendaDate}"><small>${e(calLabel(date,{weekday:'short'}))}</small><strong>${Number(date.slice(-2))}</strong></button>`).join('')}</div>
  <div class="agenda-items">${entries.map(item=>`<div class="agenda-row"><span class="agenda-time">${item.time?e(eventTime(item.time)):item.category==='Task'||item.category==='Follow-up'?'Due':'All day'}</span><div><button class="link" data-act="${item.action}" data-key="${e(item.id)}">${e(item.title)}</button><small>${e(item.category)}</small></div></div>`).join('')||empty('Nothing scheduled for this day.')}</div>
  ${isEmployee()?'':`<div class="panel-foot">${btn('＋ Add event','cal-add',agendaDate)}</div>`}</div>`;
@@ -180,7 +189,7 @@ function renderHome(open,unassigned,due){
  const date=new Intl.DateTimeFormat('en-IN',{dateStyle:'full',timeZone:'Asia/Kolkata'}).format(new Date());
  ui.innerHTML=`<div class="overview-heading"><div><div class="day-date">${e(date)}</div><h1>Workspace overview</h1></div><div class="actions">${btn('Review queue','nav','Review Queue')}${btn('＋ New task','task','',true)}</div></div>
  <div class="snapshot">${bars.map(([label,value,target,color,icon])=>`<button class="snapshot-card" data-act="home-link" data-key="${target}" data-label="${label}"><span class="snapshot-icon ${color}" aria-hidden="true">${icon}</span><span class="snapshot-label">${label}</span><strong>${value}</strong><span class="snapshot-arrow" aria-hidden="true">›</span></button>`).join('')}</div>
- <div class="split home-columns"><div>${panel('Team tasks',taskRows(tasks.slice(0,6))+`<div class="panel-foot">${btn('View tasks','nav','Tasks')}</div>`)}${panel('Expert follow-ups',followUps.slice(0,6).map(l=>listItem(l.name,l.owner||'Unassigned',btn('Log outcome','outcome',l.id))).join('')||empty('No follow-ups due.'))}</div>
+ <div class="split home-columns"><div>${panel('Team tasks',taskRows(tasks.slice(0,6))+`<div class="panel-foot">${btn('View tasks','nav','Tasks')}</div>`)}${panel('Expert follow-ups',followUps.slice(0,6).map(l=>listItem(l.name,l.owner||'Unassigned',btn('Follow up','outcome',l.id))).join('')||empty('No follow-ups due.'))}</div>
  <div>${isFounder()?'':panel('Attendance',attendanceCard())}${panel('Today’s meetings',meetings.map(item=>listItem(item.title,[eventTime(item.time),item.owner].filter(Boolean).join(' · '),btn('Open','event',item.id))).join('')||empty('No meetings today.'))}</div></div>`;
 
 }
@@ -211,9 +220,9 @@ function render(){
  if(page==='Expert Leads'){
  const queues={
  'All leads':data.leads,'Unassigned':unassigned,'Assigned':data.leads.filter(lead=>lead.owner),
- 'My leads':data.leads.filter(lead=>lead.owner===currentName),'Follow-ups':due
+ 'My leads':data.leads.filter(lead=>assignedTo(lead,currentName)),'Follow-ups':due
  };
- const visible=queues[filter].filter(lead=>[lead.name,lead.phone,lead.area,lead.owner,leadColumn(lead,'Brand / Organisation'),leadColumn(lead,'City')].join(' ').toLowerCase().includes(query.toLowerCase()));
+ const visible=queues[filter].filter(lead=>[lead.name,lead.phone,lead.area,assigneeLabel(lead),leadColumn(lead,'Brand / Organisation'),leadColumn(lead,'City')].join(' ').toLowerCase().includes(query.toLowerCase()));
  const tabs=(isEmployee()?['My leads','Follow-ups']:['All leads','My leads','Unassigned','Assigned','Follow-ups']).map(name=>
  `<button data-act="lead-filter" data-key="${name}" aria-pressed="${name===filter}">${name==='Follow-ups'?'Follow-ups due':name} <span class="tab-count">${queues[name].length}</span></button>`).join('');
  const pageSize=25;
@@ -231,9 +240,9 @@ function render(){
   const due=lead.due?'Due '+lead.due:'';
   return `<tr>${checkbox?`<td><input type="checkbox" aria-label="Select ${e(lead.name)}" data-check="${e(lead.id)}" ${selected.has(lead.id)?'checked':''}></td>`:''}
   <td><button class="link lead-name" data-act="lead" data-key="${e(lead.id)}">${e(lead.name)}</button>${context||lead.phone?`<small>${e(context||lead.phone)}</small>`:''}</td>
-  <td>${pill(lead.status)}</td><td>${ownerLink(lead.owner)}</td>
+  <td>${pill(lead.status)}</td><td>${assigneeLinks(lead)}</td>
   <td>${lead.action?`<strong>${e(lead.action)}</strong>`:'<span class="muted">—</span>'}${due?`<small>${e(due)}</small>`:''}</td>
-  <td><div class="lead-row-actions">${checkbox?btn(lead.owner?'Reassign':'Assign','assign',lead.id):''}${btn('Log','outcome',lead.id)}${leadContact(lead)}</div></td></tr>`;
+  <td><div class="lead-row-actions">${checkbox?btn(lead.owner?'Reassign':'Assign','assign',lead.id):''}${btn('Follow up','outcome',lead.id)}</div></td></tr>`;
  });
  const caption=visible.length?`Showing ${start+1}–${start+shown.length} of ${visible.length}`:'0 leads';
  const pager=`<div class="lead-pagination"><span>${caption}</span><div><button data-act="lead-page" data-key="-1" ${leadPage===1?'disabled':''}>Previous</button><span>${leadPage} / ${totalPages}</span><button data-act="lead-page" data-key="1" ${leadPage===totalPages?'disabled':''}>Next</button></div></div>`;
@@ -245,16 +254,16 @@ function render(){
 
  }
  if(page==='Tasks'){
- const scope=personalTaskScope?data.tasks.filter(task=>task.owner===currentName):data.tasks;
+ const scope=personalTaskScope?data.tasks.filter(task=>assignedTo(task,currentName)):data.tasks;
  const waiting=task=>task.status!=='Done'&&task.status!=='In review';
  const tasks=scope.filter(t=>taskFilter==='All'||taskFilter==='Open'&&t.status!=='Done'||
- taskFilter==='Mine'&&t.status!=='Done'&&t.owner===currentName||
+ taskFilter==='Mine'&&t.status!=='Done'&&assignedTo(t,currentName)||
  taskFilter==='Today'&&waiting(t)&&(t.status==='Rework'||!t.due||t.due<=day())||
  taskFilter==='Review'&&t.status==='In review'||
  taskFilter==='Overdue'&&waiting(t)&&t.due&&t.due<day()||
  taskFilter==='Completed'&&t.status==='Done');
  const filters=personalTaskScope?['Mine','Today','Overdue','Review','Completed']:['Open','Today','Overdue','Review','Completed','All'];
- const list=tasks.length?table(['Task','Assignee','Due date','Points','Status'],tasks.map(t=>`<tr><td><button class="link" data-act="task" data-key="${e(t.id)}">${e(t.title)}</button></td><td>${ownerLink(t.owner)}</td><td>${e(t.due||'—')}</td><td>${taskPoints(t)||'—'}</td><td>${pill(t.status)}</td></tr>`)):empty('No tasks in this view.');
+ const list=tasks.length?table(['Task','Assignee','Due date','Points','Status'],tasks.map(t=>`<tr><td><button class="link" data-act="task" data-key="${e(t.id)}">${e(t.title)}</button></td><td>${assigneeLinks(t)}</td><td>${e(t.due||'—')}</td><td>${taskPoints(t)||'—'}</td><td>${pill(t.status)}</td></tr>`)):empty('No tasks in this view.');
  const dated=tasks.filter(task=>task.due).sort((a,b)=>a.due.localeCompare(b.due));
  const days=[...new Set(dated.map(task=>task.due))];
  const schedule=days.length?days.map(date=>`<div class="task-date-group"><h3>${e(calLabel(date,{weekday:'long',day:'numeric',month:'short'}))}</h3>${taskRows(dated.filter(task=>task.due===date))}</div>`).join(''):empty('No dated tasks in this view.');
@@ -281,7 +290,7 @@ function render(){
 function makeTask(l){
  const active=data.tasks.filter(t=>t.lead===l.id&&t.status!=='Done');
  if(!l.owner||!l.action||['Do not contact','Not interested','Invalid number','Onboarded'].includes(l.status)){active.forEach(t=>t.status='Done');return}
- const fields={title:l.action+' · '+l.name,owner:l.owner,due:l.due,priority:l.priority||'Medium',note:l.instructions||'',lead:l.id};
+ const fields={title:l.action+' · '+l.name,owner:l.owner,owners:assignees(l),due:l.due,priority:l.priority||'Medium',note:l.instructions||'',lead:l.id};
  if(active.length)Object.assign(active[0],fields);else data.tasks.unshift({id:id(),status:'To do',...fields});
 }
 const normalized=s=>s.replace(/\D/g,'').replace(/^91(?=\d{10}$)/,'');
@@ -289,7 +298,7 @@ function setLead(l,v){
  v.name=v.name.trim();v.phone=v.phone.trim();
  if(!v.name||!normalized(v.phone))throw Error('Enter a name and valid phone number.');
  if(data.leads.some(x=>x.id!==l.id&&normalized(x.phone)===normalized(v.phone)))throw Error('This phone number already belongs to a lead.');
- Object.assign(l,v);if(!data.leads.includes(l))data.leads.unshift(l);makeTask(l);
+ Object.assign(l,v);setAssignees(l,v.owners);if(!data.leads.includes(l))data.leads.unshift(l);makeTask(l);
 }
 const reader=file=>new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve({name:file.name,url:r.result});r.onerror=()=>reject(Error('Unable to read attachment.'));r.readAsDataURL(file)});
 async function attach(file){if(!file?.size)return null;if(file.size>700000)throw Error('Attachments must be smaller than 700 KB.');return reader(file)}
@@ -317,7 +326,7 @@ function importCsv(text,source='Sheet CSV'){
  if(rowIndex<0)throw Error('No lead headers found in the first 35 rows. Open the leads tab itself and copy its link. Put Name (Expert) and Contact Number (General) on the same row.');
  const headers=rows[rowIndex].map(value=>value.trim()), heads=headers.map(headerKey);
  const find=(...keys)=>keys.map(key=>heads.indexOf(key)).find(index=>index>=0)??-1;
- const columns={name:find(...names),phone:find(...phones),owner:find('assignedto','owner','assignee','teammember'),action:find('nextaction','todo','task','action'),due:find('followupdate','duedate','nextfollowup'),status:find('status'),sheetStage:find('leadstatus','communicationstage'),sheetPipeline:find('pipelinestatus'),sheetInterest:find('interest'),method:find('lastcontactmethod','contactmethod'),area:find('specialization','area','keyword'),priority:find('priority'),instructions:find('instructions','todo'),note:find('remarks','notes')};
+ const columns={name:find(...names),phone:find(...phones),owner:find('teammember','assignedto','assignee','owner'),action:find('nextaction','todo','task','action'),due:find('followupdate','duedate','nextfollowup'),status:find('status'),sheetStage:find('leadstatus','communicationstage'),sheetPipeline:find('pipelinestatus'),sheetInterest:find('interest'),method:find('lastcontactmethod','contactmethod'),area:find('specialization','area','keyword'),priority:find('priority'),instructions:find('instructions','todo'),note:find('remarks','notes')};
  const byPhone=new Map(data.leads.flatMap(lead=>[[normalized(lead.phone),lead],...(lead.sheetSnapshot?.phone?[[normalized(lead.sheetSnapshot.phone),lead]]:[])]));
  let added=0,skipped=0,updated=0;
  const seen=new Set();
@@ -329,8 +338,12 @@ function importCsv(text,source='Sheet CSV'){
  seen.add(phone);
  const existing=byPhone.get(phone);
  if(existing&&source!=='Google Sheets'){skipped++;continue}
- const people=[...data.people,...(roleSeats||[]).filter(person=>person.email)];
- fields.owner=people.find(person=>person.name.toLowerCase()===fields.owner.toLowerCase())?.name||'';
+ const people=[...data.people,...(roleSeats||[]).filter(person=>person.email),{name:currentName}];
+ const sheetOwner=fields.owner;
+ setAssignees(fields,sheetOwner.split(/[,;\n]+/).flatMap(name=>{
+  const person=people.find(item=>item.name.toLowerCase()===name.trim().toLowerCase());
+  return person?[person.name]:[];
+ }));
  const stageFields=['pipelinestatus','leadstatus','communicationstage','registrationstatus','status'];
  fields.status=stageFields.map(key=>statuses.find(status=>headerKey(status)===headerKey(row[heads.indexOf(key)]||''))).find(Boolean)||'New';
  fields.priority=['Low','Medium','High','Urgent'].find(priority=>priority.toLowerCase()===fields.priority.toLowerCase())||'Medium';
@@ -344,15 +357,17 @@ function importCsv(text,source='Sheet CSV'){
  if(existing){
   if(data.sheetQueue?.[existing.id]){skipped++;continue;}
   const previous=existing.sheetSnapshot;
+  if(previous&&columns.owner>=0&&assigneeLabel(existing)===assigneeLabel(previous))setAssignees(existing,fields.owners);
   for(const [key,value] of Object.entries(fields)){
+   if(key==='owner'||key==='owners')continue;
    if(previous&&columns[key]>=0&&existing[key]===previous[key]&&value!==previous[key])existing[key]=value;
   }
-  if(previous&&Object.keys(fields).some(key=>previous[key]!==fields[key])){makeTask(existing);updated++}
-  existing.sheetSnapshot={...fields};
+  if(previous&&(assigneeLabel(previous)!==assigneeLabel(fields)||Object.keys(fields).some(key=>key!=='owner'&&key!=='owners'&&previous[key]!==fields[key]))){makeTask(existing);updated++}
+  existing.sheetSnapshot={...fields,owner:sheetOwner};
   existing.sheetFields=sheetFields;
  }else{
   const lead={id:id(),source,sheetFields,...fields};
-  if(source==='Google Sheets')lead.sheetSnapshot={...fields};
+  if(source==='Google Sheets')lead.sheetSnapshot={...fields,owner:sheetOwner};
   data.leads.unshift(lead);
   byPhone.set(phone,lead);
   makeTask(lead);
@@ -364,16 +379,8 @@ function importCsv(text,source='Sheet CSV'){
 document.addEventListener('change',ev=>{const key=ev.target.dataset.check;if(key){ev.target.checked?selected.add(key):selected.delete(key);render()}});
 document.addEventListener('click',async ev=>{
  const b=ev.target.closest('[data-act]');if(!b)return;
- if(busy){if(b.dataset.act==='lead-contact')ev.preventDefault();return;}
+ if(busy)return;
  const {act,key}=b.dataset;
- if(act==='lead-contact'){
-  if(ev.defaultPrevented)return;
-  busy=true;
-  try{await save({type:'lead-contact',id:key,method:b.dataset.method})}
-  catch(error){notify('Contact was not recorded: '+error.message)}
-  finally{busy=false}
-  return;
- }
  if(act==='sheet-disconnect'&&isSuperAdmin()){
   form('Disconnect Google Sheet','<p>Stop automatic pulls from this Sheet. Imported leads stay in the workspace.</p>','Disconnect',()=>{delete data.sheetLink;delete data.sheetSyncedAt;sheetError=''});
   return;
@@ -393,7 +400,7 @@ document.addEventListener('click',async ev=>{
   agendaDate=act==='agenda-date'?key:calDay(agendaDate||day(),Number(key));render();return
  }
  if(act==='day-task-timer'){
-  const task=data.tasks.find(item=>item.id===key&&item.owner===currentName);
+  const task=data.tasks.find(item=>item.id===key&&assignedTo(item,currentName));
   if(!task||!['To do','In progress','Rework'].includes(task.status))return;
   busy=true;
   try{
@@ -440,29 +447,29 @@ document.addEventListener('click',async ev=>{
  }
  if(act==='lead'){
  const l=data.leads.find(x=>x.id===key)||{id:id(),status:'New',source:'Manual'};
- const links=l.phone?'<p>'+leadContact(l)+'</p>':'';
+ const links=btn('Follow up','outcome',l.id);
  const history=(l.history||[]).map(h=>`<p>${e([h.date,h.actor,h.method,h.status,h.note].filter(Boolean).join(' · '))}</p>`).join('');
  if(isEmployee()){readRecord(e(l.name),links+'<p>'+e([l.status,l.action,l.due].filter(Boolean).join(' · '))+'</p><p>'+e(l.instructions)+'</p>'+leadSheetDetails(l)+history);return}
- form(key?'Edit expert lead':'Add expert lead',input('Name','name',l.name,'text',true)+input('Phone','phone',l.phone,'tel',true)+input('Specialization','area',l.area)+select('ERP stage','status',options(statuses,l.status))+select('Assigned to','owner',nameOptions(l.owner))+input('Next action','action',l.action)+input('Due date','due',l.due,'date')+area('Instructions','instructions',l.instructions)+
+ form(key?'Edit expert lead':'Add expert lead',input('Name','name',l.name,'text',true)+input('Phone','phone',l.phone,'tel',true)+input('Specialization','area',l.area)+select('ERP stage','status',options(statuses,l.status))+assigneePicker(l)+input('Next action','action',l.action)+input('Due date','due',l.due,'date')+area('Instructions','instructions',l.instructions)+
  (data.sheetLink||l.sheetSnapshot?select('Lead Status','sheetStage',options(['','Followup','Communication','Call Confirmed','Call Concluded'],l.sheetStage))+
  select('Pipeline Status','sheetPipeline',options(['','Hot','In Progress','Cold'],l.sheetPipeline))+
  select('Interest','sheetInterest',options(['','Yes','No','Maybe'],l.sheetInterest)):'')+leadSheetDetails(l)+history,
- 'Save lead',v=>{if(v.owner&&!v.action)v.action='Initial call';if(v.owner&&!v.due)v.due=day();setLead(l,v)});
+ 'Save lead',v=>{if(v.owners.length&&!v.action)v.action='Initial call';if(v.owners.length&&!v.due)v.due=day();setLead(l,v)});
 
  }
  if(act==='assign'){
  const leads=data.leads.filter(l=>key?l.id===key:selected.has(l.id));
  if(!leads.length)return;
- form('Assign '+(key?e(leads[0].name):leads.length+' leads'),select('Assign to','owner',nameOptions(leads[0].owner))+select('Task','action',options([...actions,'Custom'],leads[0].action))+input('Custom task title','custom')+input('Due date','due',key&&leads[0].due||day(),'date',true)+select('Priority','priority',options(['Low','Medium','High','Urgent'],'Medium'))+area('Instructions','instructions',leads[0].instructions),'Assign and create tasks',v=>{
- if(!v.owner)throw Error('Choose an employee.');
+ form('Assign '+(key?e(leads[0].name):leads.length+' leads'),assigneePicker(key?leads[0]:{})+select('Task','action',options([...actions,'Custom'],leads[0].action))+input('Custom task title','custom')+input('Due date','due',key&&leads[0].due||day(),'date',true)+select('Priority','priority',options(['Low','Medium','High','Urgent'],'Medium'))+area('Instructions','instructions',leads[0].instructions),'Assign and create tasks',v=>{
+ if(!v.owners.length)throw Error('Choose at least one assignee.');
  if(v.action==='Custom'&&!v.custom.trim())throw Error('Enter a custom task title.');
  const eligible=leads.filter(l=>!['Do not contact','Not interested','Invalid number','Onboarded'].includes(l.status));
  if(!eligible.length)throw Error('These leads are closed to outreach.');
- eligible.forEach(l=>{Object.assign(l,{owner:v.owner,action:v.action==='Custom'?v.custom.trim():v.action,due:v.due,priority:v.priority,instructions:v.instructions});makeTask(l)});
+ eligible.forEach(l=>{setAssignees(l,v.owners);Object.assign(l,{action:v.action==='Custom'?v.custom.trim():v.action,due:v.due,priority:v.priority,instructions:v.instructions});makeTask(l)});
  selected.clear();notify(eligible.length+' assigned'+(eligible.length<leads.length?' · Closed leads skipped':''))
  });
  }
- if(act==='outcome'){openLeadOutcome(key);return}
+ if(act==='outcome'){if(modal.open)modal.close();openLeadOutcome(key);return}
  if(act==='task'){
  if(modal.open)modal.close();
  const t=data.tasks.find(x=>x.id===key)||{id:id(),status:'To do',priority:'Medium',start:day(),due:day(),projectId:page==='Projects'?projectSelection:''};
@@ -488,7 +495,7 @@ document.addEventListener('click',async ev=>{
  }
  const tracked=(t.elapsed||0)+(t.timer?Date.now()-t.timer:0);
  const details=select('Repeat after completion','repeat',options(['None','Daily','Weekly','Monthly'],t.repeat||'None'))+area('Checklist (one step per line)','checklistText',(t.checklist||[]).map(item=>item.text).join('\n'))+select('Priority','priority',options(['Low','Medium','High','Urgent'],t.priority))+select('Status','status',options(taskStatuses,t.status))+taskAmount('Estimated hours','hours',t.hours)+taskPlanFields(t)+taskResultFields(t)+taskResultsDetails(t)+area('Comment','comment')+(t.comments||[]).map(c=>'<p>'+e(c)+'</p>').join('')+input('Attachment','attachment','','file')+download(t.file);
- const fields=(!key?templateField():'')+input('Title','title',t.title,'text',true)+select('Assigned to','owner',nameOptions(t.owner))+projectField(t.projectId)+input('Start date','start',t.start,'date')+input('Due date','due',t.due,'date')+area('Instructions','note',t.note);
+ const fields=(!key?templateField():'')+input('Title','title',t.title,'text',true)+assigneePicker(t)+projectField(t.projectId)+input('Start date','start',t.start,'date')+input('Due date','due',t.due,'date')+area('Instructions','note',t.note);
  const tracker=key?`<p>Tracked ${duration(tracked)} · ${t.timer?'Running':'Paused'}</p>${select('Timer','timerAction',options(['Keep current',t.timer?'Pause':'Start'],'Keep current'))}`:'';
  form(key?'Task details':'New task',fields+`<details class="task-options" open><summary>Planning, results and attachments</summary><div class="task-options-grid">${details}${tracker}</div></details>`,'Save task',async v=>{
  if(v.repeat!=='None'&&!v.due)throw Error('Set a due date for the recurring task.');
@@ -497,7 +504,7 @@ document.addEventListener('click',async ev=>{
  if(v.timerAction==='Start')t.timer=Date.now();if(v.timerAction==='Pause'||v.status==='Done'){if(t.timer)t.elapsed=(t.elapsed||0)+Date.now()-t.timer;delete t.timer}
  if(v.comment.trim())(t.comments||=[]).push(v.comment.trim());
  t.checklist=v.checklistText.split('\n').map(text=>text.trim()).filter(Boolean).slice(0,30).map(text=>({text:text.slice(0,250),done:(t.checklist||[]).find(item=>item.text===text)?.done||false}));
- delete v.checklistText;delete v.attachment;delete v.timerAction;delete v.comment;Object.assign(t,v);if(!key)data.tasks.unshift(t);notify('Task saved');
+ delete v.checklistText;delete v.attachment;delete v.timerAction;delete v.comment;Object.assign(t,v);setAssignees(t,v.owners);if(!key)data.tasks.unshift(t);notify('Task saved');
  });
  const taskForm=modal.querySelector('form');
  const estimate=taskForm.elements.hours, points=taskForm.querySelector('#task-points');
@@ -512,13 +519,13 @@ document.addEventListener('click',async ev=>{
  form('Employee profile',input('Name','name',p.name,'text',true)+input('Department','team',p.team,'text',true)+input('Role','role',p.role,'text',true)+select('Reporting manager','manager',nameOptions(p.manager,'None')),'Save employee',v=>{
  v.name=v.name.trim();if(!v.name||data.people.some(x=>x!==p&&x.name===v.name))throw Error('Enter a unique employee name.');
  if(v.manager===v.name||v.manager&&v.manager===old)throw Error('Choose a different reporting manager.');
- if(old&&old!==v.name){if(old==='Vansh')throw Error('The workspace owner name is fixed.');for(const record of [...data.leads,...data.tasks,...data.projects,...data.events,...data.messages,...data.reviews])if(record.owner===old)record.owner=v.name;data.people.forEach(x=>{if(x.manager===old)x.manager=v.name})}
+ if(old&&old!==v.name){if(old==='Vansh')throw Error('The workspace owner name is fixed.');for(const record of [...data.leads,...data.tasks,...data.projects,...data.events,...data.messages,...data.reviews])if(assignedTo(record,old)){if(Array.isArray(record.owners))setAssignees(record,assignees(record).map(name=>name===old?v.name:name));else record.owner=v.name;}data.people.forEach(x=>{if(x.manager===old)x.manager=v.name})}
  Object.assign(p,v);if(key==='')data.people.push(p);notify('Employee saved');
  });
  }
  if(act==='import')form('Import expert leads',`<p>Upload a CSV exported from Google Sheets, or paste CSV with Name and Phone or Name (Expert) and Contact Number (General) headers.</p><label>CSV file<input name="file" type="file" accept=".csv,text/csv"></label>`+area('Or paste CSV','csv'),'Import leads',async v=>{const text=v.file.size?await v.file.text():v.csv;if(!text.trim())throw Error('Choose a CSV or paste its contents.');const {added,skipped}=importCsv(text);notify(added+' imported · '+skipped+' skipped');page='Expert Leads';filter='All leads';query=''});
  if(act==='export'){
- const sheet=[['Lead ID','Name','Phone','Specialization','Assigned to','Task','Status','Due date','Instructions','Remarks'],...data.leads.map(l=>[l.id,l.name,l.phone,l.area,l.owner,l.action,l.status,l.due,l.instructions,l.note])];
+ const sheet=[['Lead ID','Name','Phone','Specialization','Assigned to','Task','Status','Due date','Instructions','Remarks'],...data.leads.map(l=>[l.id,l.name,l.phone,l.area,assigneeLabel(l),l.action,l.status,l.due,l.instructions,l.note])];
  const csv=sheet.map(row=>row.map(v=>{let s=String(v??'');if(/^[\s]*[=+@-]/.test(s)&&!/^\+\d+$/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"'}).join(',')).join('\r\n');
  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='svaveda-expert-leads.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
  }
@@ -610,7 +617,7 @@ function teamDirectory(){
  return panel('Directory',`<div class="toolbar">${isSuperAdmin()?btn('Add employee','person','',true):'<span>Employee directory</span>'}</div>`+data.people.map((person,i)=>`<div class="item row"><div>${ownerLink(person.name)}<small>${e([person.team,person.role,person.manager?'Reports to '+person.manager:''].filter(Boolean).join(' · '))}</small></div>${isSuperAdmin()?btn('Edit','person',i):''}</div>`).join(''));
 }
 function teamPerformance(){
- return panel('Team activity',table(['Employee','Tasks completed','Leads assigned','Experts onboarded'],data.people.map(p=>`<tr><td>${ownerLink(p.name)}</td><td>${data.tasks.filter(t=>t.owner===p.name&&t.status==='Done').length}</td><td>${data.leads.filter(l=>l.owner===p.name).length}</td><td>${data.leads.filter(l=>l.owner===p.name&&l.status==='Onboarded').length}</td></tr>`)));
+ return panel('Team activity',table(['Employee','Tasks completed','Leads assigned','Experts onboarded'],data.people.map(p=>`<tr><td>${ownerLink(p.name)}</td><td>${data.tasks.filter(t=>assignedTo(t,p.name)&&t.status==='Done').length}</td><td>${data.leads.filter(l=>assignedTo(l,p.name)).length}</td><td>${data.leads.filter(l=>assignedTo(l,p.name)&&l.status==='Onboarded').length}</td></tr>`)));
 }
 
 const headerKey=value=>String(value??'').trim().toLowerCase().replace(/[^a-z]/g,'');
@@ -631,7 +638,7 @@ function ownerLink(name){
  return name&&(!isEmployee()||name===currentName)?`<button type="button" class="link" data-act="owner-work" data-key="${e(name)}" title="View tasks for ${e(name)}">${e(name)}</button>`:e(name||'Unassigned');
 }
 function openOwnerWork(name){
- const tasks=data.tasks.filter(task=>task.owner===name);
+ const tasks=data.tasks.filter(task=>assignedTo(task,name));
  const open=tasks.filter(task=>task.status!=='Done'), done=tasks.filter(task=>task.status==='Done');
  const hours=open.reduce((total,task)=>total+(Number(task.hours)||0),0);
  const overdue=open.filter(task=>task.due&&task.due<day()).length;
@@ -639,14 +646,6 @@ function openOwnerWork(name){
  const workload=panel('Workload',listItem('Open work',open.length+' tasks · '+overdue+' overdue · '+hours+' estimated hours')+leave.map(request=>listItem('Approved leave',request.start+' – '+request.end)).join(''));
  readRecord(e(name)+' · Tasks',workload+panel('Open · '+open.length,taskRows(open))+panel('Completed · '+done.length,taskRows(done)));
 }
-function leadContact(lead){
- if(['Do not contact','Invalid number'].includes(lead.status))return '';
- const phone=normalized(lead.phone||'');
- if(!phone)return '';
- const tel=(lead.phone||'').replace(/[^+\d]/g,'');
- return `<a class="contact-action" data-act="lead-contact" data-key="${e(lead.id)}" data-method="Call" href="tel:${e(tel)}">Call</a><a class="contact-action" data-act="lead-contact" data-key="${e(lead.id)}" data-method="WhatsApp" target="_blank" rel="noopener noreferrer" href="https://wa.me/${phone.length===10?'91'+phone:phone}">Text on WhatsApp</a>`;
-}
-
 function taskChecklist(task){
  const items=task.checklist||[];
  return items.length?`<fieldset><legend>Checklist</legend>${items.map((item,i)=>`<label class="checklist-step"><input type="checkbox" name="step${i}" ${item.done?'checked':''}> ${e(item.text)}</label>`).join('')}</fieldset>`:'';
@@ -654,15 +653,15 @@ function taskChecklist(task){
 let alertScan=false;
 function activityAlerts(state){
  const today=day(), entries=[];
- for(const task of state.tasks.filter(task=>task.owner===currentName&&task.status!=='Done')){
+ for(const task of state.tasks.filter(task=>assignedTo(task,currentName)&&task.status!=='Done')){
   entries.push(['assigned:'+task.id,'Task assigned']);
   if(task.status==='Rework')entries.push(['rework:'+task.id+':'+JSON.stringify(task.comments||[]),'Task returned for changes']);
   if(task.status!=='In review'&&task.due&&task.due<=today)entries.push(['task-due:'+task.id+':'+task.due,'Task due or overdue']);
  }
- for(const lead of state.leads.filter(lead=>lead.owner===currentName&&lead.due&&lead.due<=today&&!['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status)))entries.push(['lead:'+lead.id+':'+lead.due,'Expert follow-up due']);
+ for(const lead of state.leads.filter(lead=>assignedTo(lead,currentName)&&lead.due&&lead.due<=today&&!['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status)))entries.push(['lead:'+lead.id+':'+lead.due,'Expert follow-up due']);
  for(const item of state.events.filter(item=>item.date===today&&item.category!=='Holiday'&&(!item.owner||item.owner===currentName)))entries.push(['event:'+item.id+':'+item.date,'Meeting on your calendar today']);
  for(const request of (state.requests||[])){
-  if(request.owner===currentName&&request.status!=='Pending')entries.push(['request:'+request.id+':'+request.status,'Request decision available']);
+  if(requesassignedTo(t,currentName)&&request.status!=='Pending')entries.push(['request:'+request.id+':'+request.status,'Request decision available']);
   if(!isEmployee()&&request.status==='Pending')entries.push(['review-request:'+request.id,'Request awaiting review']);
  }
  if(!isEmployee())for(const task of state.tasks.filter(task=>task.status==='In review'))entries.push(['review:'+task.id+':'+(task.reviewAt||''),'Task awaiting review']);

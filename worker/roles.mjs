@@ -54,10 +54,9 @@ function scopedState(access) {
     visible.people = [...byName.values()];
     return visible;
   }
-  const own = record => record.owner === access.name;
-  return {people:[{name:access.name,role:access.role}],leads:visible.leads.filter(own),tasks:visible.tasks.filter(own),
-    projects:visible.projects.filter(item=>own(item)||item.members?.includes(access.name)),events:visible.events.filter(item=>!item.owner||own(item)),
-    attendance:visible.attendance,messages:[],reviews:visible.reviews.filter(own),requests:(visible.requests||[]).filter(item=>item.user===access.user)};
+  return {people:[{name:access.name,role:access.role}],leads:visible.leads.filter(item=>assignedTo(item,access.name)),tasks:visible.tasks.filter(item=>assignedTo(item,access.name)),
+    projects:visible.projects.filter(item=>item.owner===access.name||item.members?.includes(access.name)),events:visible.events.filter(item=>!item.owner||item.owner===access.name),
+    attendance:visible.attendance,messages:[],reviews:visible.reviews.filter(item=>item.owner===access.name),requests:(visible.requests||[]).filter(item=>item.user===access.user)};
 }
 
 function mergeTeamState(access, value) {
@@ -66,7 +65,7 @@ function mergeTeamState(access, value) {
     for (const key of ['leads','tasks','projects','events','reviews']) state[key] = value[key];
   } else {
     const statuses = new Set(['To do','In progress','Blocked','In review','Rework']);
-    for (const task of state.tasks.filter(item => item.owner === access.name)) {
+    for (const task of state.tasks.filter(item => assignedTo(item,access.name))) {
       if (task.status === 'Done') continue;
       const edited = value.tasks.find(item => item?.id === task.id);
       if (!edited) continue;

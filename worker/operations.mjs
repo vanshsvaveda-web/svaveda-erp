@@ -11,38 +11,30 @@ function audit(state,access,action,subject) {
 
 function operate(access,state,command) {
   const employee = access.role === 'Employee';
-  if (command.type === 'lead-contact') {
-    const lead = state.leads.find(item=>item.id===command.id && (!employee || item.owner===access.name));
-    if (!lead || ['Do not contact','Invalid number'].includes(lead.status) ||
-        !['Call','WhatsApp'].includes(command.method)) throw Error('Contact action is unavailable.');
-    lead.method=command.method;
-    if (!lead.sheetStage || lead.sheetStage==='Followup') lead.sheetStage='Communication';
-    if (lead.status==='New') lead.status='Contacted';
-    (lead.history ||= []).unshift({date:todayIST(),status:lead.status,actor:access.name,method:command.method,
-      note:command.method==='Call'?'Opened call dialer':'Opened WhatsApp conversation'});
-    lead.history=lead.history.slice(0,50);
-    audit(state,access,'Opened '+command.method,lead.name);
-  } else if (command.type === 'lead-outcome') {
-    const lead = state.leads.find(item => item.id === command.id && (!employee || item.owner === access.name));
+  if (command.type === 'lead-outcome') {
+    const lead = state.leads.find(item => item.id === command.id && (!employee || assignedTo(item,access.name)));
     if (!lead) throw Error('Lead is unavailable.');
     if (lead.status === 'Do not contact' && employee) throw Error('This lead has opted out.');
     if (!leadOutcomes.has(command.status)) throw Error('Choose a valid outcome.');
     const due = command.due || '';
-    if (due && (!validDate(due) || due < todayIST() || !lead.owner || terminalLeadStatuses.has(command.status))) {
-      throw Error('Choose a follow-up date today or later for an assigned, open lead.');
-    }
+    const action = cleanText(command.action,160) || (due?'Follow-up':'');
+    if ((action||due) && (terminalLeadStatuses.has(command.status)||!assignees(lead).length))
+      throw Error('Next steps require an assigned, open lead.');
+    if (due && (!validDate(due) || due < todayIST()))
+      throw Error('Choose a follow-up date today or later.');
     const note = cleanText(command.note,3000);
     for (const task of state.tasks.filter(item => item.lead === lead.id && item.status !== 'Done')) {
       task.status = 'Done';
       if (task.timer) task.elapsed = (task.elapsed||0) + Math.max(0,Date.now()-task.timer);
       delete task.timer;
     }
-    Object.assign(lead,{status:command.status,note,due,action:due?'Follow-up':''});
+    Object.assign(lead,{status:command.status,note,due,action});
     const method=['Call','WhatsApp','Email','Instagram','Other'].includes(command.method)?command.method:'';
     if(method)lead.method=method;
-    if(command.status==='Follow-up')lead.sheetStage='Followup';
+    if(action||command.status==='Follow-up')lead.sheetStage='Followup';
+    else if(command.status==='Contacted'&&!lead.sheetStage)lead.sheetStage='Communication';
     (lead.history ||= []).unshift({date:todayIST(),status:lead.status,note,actor:access.name,method});
-    if (due) state.tasks.unshift({id:crypto.randomUUID(),title:'Follow-up · '+lead.name,owner:lead.owner,due,priority:lead.priority||'Medium',status:'To do',lead:lead.id,note});
+    if (action) state.tasks.unshift({id:crypto.randomUUID(),title:action+' · '+lead.name,owner:assignees(lead)[0],owners:assignees(lead),due,priority:lead.priority||'Medium',status:'To do',lead:lead.id,note});
     audit(state,access,'Logged lead outcome',lead.name);
   } else if (command.type === 'request') {
     if(access.role==='Founder')throw Error('Founder accounts do not submit attendance or leave requests.');
@@ -112,7 +104,7 @@ function advanceRecurringTasks(state){
     const {title,owner,priority,note,projectId,hours,repeat,department,taskType,expectedOutput,kpi,kpiTarget,kpiUnit,kpiRollup}=task;
     const id=crypto.randomUUID();
     task.nextOccurrence=id;
-    added.push({id,title,owner,priority,note,projectId,hours,repeat,department,taskType,expectedOutput,kpi,kpiTarget,kpiUnit,kpiRollup,plannedDate:date,repeatDay:task.repeatDay||Number(task.due.slice(-2)),status:'To do',start:date,due:date,
+    added.push({id,title,owner,...(Array.isArray(task.owners)?{owners:assignees(task)}:{}),priority,note,projectId,hours,repeat,department,taskType,expectedOutput,kpi,kpiTarget,kpiUnit,kpiRollup,plannedDate:date,repeatDay:task.repeatDay||Number(task.due.slice(-2)),status:'To do',start:date,due:date,
       checklist:(Array.isArray(task.checklist)?task.checklist:[]).filter(item=>typeof item?.text==='string').map(item=>({text:item.text,done:false}))});
   }
   state.tasks.unshift(...added);

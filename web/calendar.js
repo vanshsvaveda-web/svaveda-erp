@@ -49,8 +49,8 @@ function calendar(){
  calendarView||=typeof matchMedia==='function'&&matchMedia('(max-width:650px)').matches?'Agenda':'Month';
  const month=calendarDate.slice(0,7)+'-01', week=weekStart(calendarDate);
  const all=calendarEntries();
- const people=[...new Set(all.map(item=>item.owner).filter(Boolean))].sort();
- const entries=all.filter(item=>(calendarFilter==='All'||item.category===calendarFilter)&&(!calendarPerson||item.owner===calendarPerson)&&(!calendarProject||item.projectId===calendarProject));
+ const people=[...new Set(all.flatMap(assignees).filter(Boolean))].sort();
+ const entries=all.filter(item=>(calendarFilter==='All'||item.category===calendarFilter)&&(!calendarPerson||assignedTo(item,calendarPerson))&&(!calendarProject||item.projectId===calendarProject));
  const personOptions='<option value="">Everyone</option>'+people.map(name=>`<option ${name===calendarPerson?'selected':''}>${e(name)}</option>`).join('');
  const projectOptions='<option value="">All projects</option>'+data.projects.map(item=>`<option value="${e(item.id)}" ${item.id===calendarProject?'selected':''}>${e(item.name)}</option>`).join('');
 
@@ -64,7 +64,7 @@ function calendar(){
  }else{
   heading=calendarView==='Day'?calLabel(calendarDate,{dateStyle:'full'}):'From '+calLabel(calendarDate,{dateStyle:'medium'});
   const visible=entries.filter(item=>calendarView==='Day'?item.date===calendarDate:item.date>=calendarDate);
-  display=visible.map(item=>listItem(item.title,[calLabel(item.date,{dateStyle:'medium'}),eventTime(item.time),item.endTime?eventTime(item.endTime):'',item.category,item.owner].filter(Boolean).join(' · '),btn('Open',item.action,item.id))).join('')||empty('No items scheduled for this view.');
+  display=visible.map(item=>listItem(item.title,[calLabel(item.date,{dateStyle:'medium'}),eventTime(item.time),item.endTime?eventTime(item.endTime):'',item.category,assigneeLabel(item)].filter(Boolean).join(' · '),btn('Open',item.action,item.id))).join('')||empty('No items scheduled for this view.');
  }
  ($('#my-calendar')||ui).innerHTML=title('Calendar','Meetings, deadlines and holidays · India Standard Time',isEmployee()?'':btn('＋ New event','cal-add',day(),true))+
  `<article class="panel calendar"><div class="calendar-tools"><div class="actions"><button data-act="cal-move" data-key="-1" aria-label="Previous period">‹</button><button data-act="cal-move" data-key="1" aria-label="Next period">›</button>${btn('Today','cal-today')}<h2>${heading}</h2></div><div class="actions"><label class="sr-only" for="cal-filter">Filter items</label><select id="cal-filter">${options(['All',...Object.keys(categoryColor)],calendarFilter)}</select><div class="segments" aria-label="Calendar view">${['Month','Week','Day','Agenda'].map(view=>`<button aria-pressed="${view===calendarView}" data-act="cal-view" data-key="${view}">${view}</button>`).join('')}</div></div></div><div class="toolbar calendar-filters"><select id="cal-person" aria-label="Filter by person">${personOptions}</select><select id="cal-project" aria-label="Filter by project">${projectOptions}</select></div>${display}</article>`;

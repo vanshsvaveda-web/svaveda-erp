@@ -49,7 +49,7 @@ async function workspace(request, env) {
     return json({ error: 'Invalid workspace update.' }, 400);
   }
   if (revision !== access.revision) return json({ error: 'The workspace changed in another tab. Reload to get the latest records.' }, 409);
-  if (!command && access.role !== 'Employee') access.priorLeadOwners = new Map((access.state?.leads||[]).map(lead=>[lead.id,lead.owner||'']));
+  if (!command && access.role !== 'Employee') access.priorLeadOwners = new Map((access.state?.leads||[]).map(lead=>[lead.id,assigneeLabel(lead)]));
   const priorTasks = new Map((access.state?.tasks || []).map(task=>[task.id,{status:task.status,completedAt:task.completedAt}]));
   const priorLeads = new Map((access.state?.leads||[]).map(lead=>[lead.id,{...lead}]));
   let next;
@@ -69,7 +69,7 @@ async function workspace(request, env) {
     if (access.role === 'Super Admin' && JSON.stringify(next.seats)!==JSON.stringify(access.seats)) audit(next,access,'Updated role seats','Roles & Access');
     for (const lead of next.leads) {
       const prior = access.priorLeadOwners?.get(lead.id);
-      if (prior !== undefined && prior !== (lead.owner||'')) audit(next,access,'Reassigned lead',lead.name);
+      if (prior !== undefined && prior !== assigneeLabel(lead)) audit(next,access,'Reassigned lead',lead.name);
     }
   }
   if (!command && access.role !== 'Employee') {
@@ -83,7 +83,7 @@ async function workspace(request, env) {
       const prior=priorLeads.get(lead.id);
       if(!prior&&lead.source==='Google Sheets')continue;
       if(prior&&JSON.stringify(prior.sheetSnapshot)!==JSON.stringify(lead.sheetSnapshot))continue;
-      const changed=Object.keys(sheetWriteFields).filter(field=>lead[field]!==prior?.[field]);
+      const changed=Object.keys(sheetWriteFields).filter(field=>sheetLeadValue(lead,field)!==sheetLeadValue(prior,field));
       if(changed.length){
         const pending=next.sheetQueue[lead.id]?.fields;
         next.sheetQueue[lead.id]={attempts:0,nextAt:0,fields:[...new Set([...(pending||[]),...changed])]};

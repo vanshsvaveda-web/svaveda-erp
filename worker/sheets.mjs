@@ -92,6 +92,7 @@ const sheetWriteFields = {
   instructions:['instructions'],
   note:['remarks','notes']
 };
+const sheetLeadValue=(lead,field)=>field==='owner'?assigneeLabel(lead):String(lead?.[field]??'');
 const sheetHeaderKey = value => String(value??'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const sheetPhone = value => String(value??'').replace(/\D/g,'').replace(/^91(?=\d{10}$)/,'');
 function sheetColumn(index) {
@@ -195,9 +196,9 @@ async function syncSheetLead(access,env,id){
       const [row=[]]=await values('A'+replacementMatches[0]+':'+sheetColumn(columnCount-1)+replacementMatches[0]);
       const matchesExisting=String(row[columns.name]??'').trim()===String(lead.name??'').trim() &&
         Object.entries(columns).every(([field,column])=>column<0||field==='phone'||!dirty?.includes(field)||
-          String(row[column]??'').trim()===String(lead[field]??'').trim());
+          String(row[column]??'').trim()===sheetLeadValue(lead,field).trim());
       if(!matchesExisting)throw Error('The new phone already exists on another Sheet row.');
-      lead.sheetSnapshot={...snapshot,...Object.fromEntries((dirty||[]).map(field=>[field,lead[field]])),phone:lead.phone};
+      lead.sheetSnapshot={...snapshot,...Object.fromEntries((dirty||[]).map(field=>[field,sheetLeadValue(lead,field)])),phone:lead.phone};
       await finish();
       return json({updatedCells:0});
     }
@@ -206,7 +207,7 @@ async function syncSheetLead(access,env,id){
       if(!env.SHEET_WRITES_SERIALIZED)throw Error('New rows require the serialized Vercel Sheet writer.');
       const cells=Array(Math.max(...Object.values(columns))+1).fill('');
       for(const [field,column] of Object.entries(columns)){
-        if(column>=0)cells[column]=String(lead[field]??'');
+        if(column>=0)cells[column]=sheetLeadValue(lead,field);
       }
       const range=title+'!A'+headerRow+':'+sheetColumn(cells.length-1);
       await google('/values/'+encodeURIComponent(range)+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{values:[cells]});
@@ -219,7 +220,7 @@ async function syncSheetLead(access,env,id){
     const [row=[]]=await values('A'+rowNumber+':'+sheetColumn(columnCount-1)+rowNumber);
     if(sheetPhone(row[columns.phone])!==identity)throw Error('The Sheet row moved. Retry after refreshing.');
     if(!lead.sheetSnapshot){
-      const matchesSavedLead=Object.entries(columns).every(([field,column])=>column<0||field==='phone'||String(row[column]??'').trim()===String(lead[field]??'').trim());
+      const matchesSavedLead=Object.entries(columns).every(([field,column])=>column<0||field==='phone'||String(row[column]??'').trim()===sheetLeadValue(lead,field).trim());
       if(!matchesSavedLead)throw Error('This phone already exists in the Sheet. Import it before updating the existing row.');
       lead.sheetSnapshot=Object.fromEntries(Object.entries(columns).filter(([,column])=>column>=0)
         .map(([field,column])=>[field,String(row[column]??'').trim()]));
@@ -228,9 +229,9 @@ async function syncSheetLead(access,env,id){
     }
     const updates=[];
     for(const [field,column] of Object.entries(columns)){
-      if(column<0||!Object.hasOwn(lead,field)||dirty&&!dirty.includes(field))continue;
+      if(column<0||(field!=='owner'&&!Object.hasOwn(lead,field))||dirty&&!dirty.includes(field))continue;
       const before=String(lead.sheetSnapshot[field]??'').trim();
-      const after=String(lead[field]??'').trim();
+      const after=sheetLeadValue(lead,field).trim();
       const actual=String(row[column]??'').trim();
       if(before===after || field==='phone' && sheetPhone(before)===sheetPhone(after))continue;
       if(actual===after){snapshot[field]=after;continue;}

@@ -3,16 +3,36 @@ let projectSelection='', projectView='List', projectTab='Tasks';
 function openLeadOutcome(key){
  const lead=data.leads.find(item=>item.id===key);
  if(!lead)return;
- form('Log outcome · '+e(lead.name),select('Outcome','status',options(statuses,lead.status))+select('Contact method','method',options(['Not specified','Call','WhatsApp','Email','Instagram','Other'],lead.method||'Not specified'))+
- area('Outreach notes','note')+input('Next follow-up','due','','date'),
- 'Save outcome',value=>{
-  if(value.due&&(!lead.owner||value.due<day()))throw Error('Choose a follow-up date today or later for an assigned lead.');
-  return {type:'lead-outcome',id:key,...value};
- },'compact');
+ const phone=normalized(lead.phone||'');
+ const contact=phone&&!['Do not contact','Invalid number','Not interested','Onboarded','Program listed'].includes(lead.status);
+ const methods=['Call','WhatsApp'];
+ const method=methods.includes(lead.method)?lead.method:methods[0];
+ const launch=contact?`<div class="follow-up-contact">${select('Contact method','method',options(methods,method))}<a class="contact-action" id="follow-up-contact">Open contact</a></div>`:'';
+ form('Follow up · '+e(lead.name),'<p>'+e(assigneeLabel(lead)||'Unassigned')+'</p>'+launch+
+ select('Outcome','status',options(statuses,lead.status))+input('Next step','action','')+
+ input('Follow-up date','due',lead.due>=day()?lead.due:'','date')+area('Notes','note',lead.note),
+ 'Save follow-up',value=>({type:'lead-outcome',id:key,...value}), 'compact');
+ const fields=modal.querySelector('form').elements;
+ const updateNextStep=()=>{
+  const canPlan=assignees(lead).length&&!['Do not contact','Invalid number','Not interested','Onboarded','Program listed'].includes(fields.status.value);
+  fields.action.disabled=fields.due.disabled=!canPlan;
+ };
+ fields.status.onchange=updateNextStep;updateNextStep();
+ const link=$('#follow-up-contact');
+ if(!link)return;
+ const mode=modal.querySelector('[name=method]');
+ const update=()=>{
+  const whatsapp=mode.value==='WhatsApp';
+  link.href=whatsapp?'https://wa.me/'+(phone.length===10?'91'+phone:phone):'tel:'+lead.phone.replace(/[^+\d]/g,'');
+  link.target=whatsapp?'_blank':'_self';
+  link.rel='noopener noreferrer';
+  link.textContent=whatsapp?'Open WhatsApp':'Open dialer';
+ };
+ mode.onchange=update;update();
 }
 
 function reviewRows(){
- const tasks=data.tasks.filter(item=>item.status==='In review').map(item=>({id:item.id,title:item.title,owner:item.owner,kind:'Task',date:item.due,at:item.reviewAt}));
+ const tasks=data.tasks.filter(item=>item.status==='In review').map(item=>({id:item.id,title:item.title,owner:assigneeLabel(item),kind:'Task',date:item.due,at:item.reviewAt}));
  const requests=(data.requests||[]).filter(item=>item.status==='Pending').map(item=>({...item,title:item.kind,kind:'Request',date:[item.start,item.end!==item.start?item.end:''].filter(Boolean).join(' – ')}));
  return [...tasks,...requests];
 }
@@ -70,7 +90,7 @@ function waitingSince(time){
 function taskBoard(tasks){
  return `<div class="project-board">${taskStatuses.map(status=>{
   const items=tasks.filter(task=>task.status===status);
-  return `<article><div class="board-heading"><strong>${status}</strong><span class="tab-count">${items.length}</span></div>${items.map(task=>`<button class="board-card" data-act="task" data-key="${e(task.id)}"><strong>${e(task.title)}</strong><small>${e([task.owner||'Unassigned',task.due].filter(Boolean).join(' · '))}</small><span>${e(task.priority||'Medium')} priority</span></button>`).join('')||empty('No tasks')}</article>`;
+  return `<article><div class="board-heading"><strong>${status}</strong><span class="tab-count">${items.length}</span></div>${items.map(task=>`<button class="board-card" data-act="task" data-key="${e(task.id)}"><strong>${e(task.title)}</strong><small>${e([assigneeLabel(task)||'Unassigned',task.due].filter(Boolean).join(' · '))}</small><span>${e(task.priority||'Medium')} priority</span></button>`).join('')||empty('No tasks')}</article>`;
  }).join('')}</div>`;
 }
 
@@ -214,14 +234,14 @@ function chooseTemplate(name){
 }
 function renderInbox(){
  const today=day();
- const tasks=data.tasks.filter(task=>task.owner===currentName&&task.status!=='Done'&&task.status!=='In review');
- const followUps=data.leads.filter(lead=>lead.owner===currentName&&lead.due&&lead.due<=today&&
+ const tasks=data.tasks.filter(task=>assignedTo(task,currentName)&&task.status!=='Done'&&task.status!=='In review');
+ const followUps=data.leads.filter(lead=>assignedTo(lead,currentName)&&lead.due&&lead.due<=today&&
   !['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status));
  const attention=tasks.filter(task=>task.status==='Rework'||task.due&&task.due<=today);
  ui.innerHTML=title('Inbox','Updates that need your attention.',btn('Refresh','inbox-refresh'))+
  `<div class="split inbox-layout"><div>${panel('My task updates · '+attention.length,attention.map(task=>listItem(task.title,
  [task.status==='Rework'?'Returned for changes':task.due<today?'Overdue':'Due today',task.due].filter(Boolean).join(' · '),btn('Open task','task',task.id))).join('')||empty('No task updates need attention.'))}
- ${panel('Expert follow-ups · '+followUps.length,followUps.map(lead=>listItem(lead.name,'Due '+lead.due,btn('Log outcome','outcome',lead.id))).join('')||empty('No follow-ups due.'))}</div>
+ ${panel('Expert follow-ups · '+followUps.length,followUps.map(lead=>listItem(lead.name,'Due '+lead.due,btn('Follow up','outcome',lead.id))).join('')||empty('No follow-ups due.'))}</div>
  <div>${!isEmployee()?panel('Founder reviews',listItem('Pending submissions',reviewRows().length+' to review',btn('Review queue','nav','Review Queue'))):''}
  ${personalRequests()}</div></div>`;
 }
@@ -234,7 +254,7 @@ function renderPipeline(){
  ui.innerHTML=title('Expert pipeline','See each expert’s stage, owner, and next action.',btn('Lead list','expert-view','List'))+
  `<div class="panel"><div class="project-board pipeline-board">${stages.map(([stage,statuses])=>{
   const leads=data.leads.filter(lead=>statuses.includes(lead.status));
-  return `<article><div class="board-heading"><strong>${stage}</strong><span class="tab-count">${leads.length}</span></div>${leads.map(lead=>`<div class="pipeline-record"><button class="link" data-act="lead" data-key="${e(lead.id)}">${e(lead.name)}</button><small>${e(lead.owner||'Unassigned')}</small>${pill(lead.status)}<p>${e(lead.action||'No next action')}${lead.due?' · '+e(lead.due):''}</p>${stage==='Closed'||lead.status==='Onboarded'?'':btn('Log outcome','outcome',lead.id)}</div>`).join('')||empty('No leads')}</article>`;
+  return `<article><div class="board-heading"><strong>${stage}</strong><span class="tab-count">${leads.length}</span></div>${leads.map(lead=>`<div class="pipeline-record"><button class="link" data-act="lead" data-key="${e(lead.id)}">${e(lead.name)}</button><small>${e(assigneeLabel(lead)||'Unassigned')}</small>${pill(lead.status)}<p>${e(lead.action||'No next action')}${lead.due?' · '+e(lead.due):''}</p>${stage==='Closed'||lead.status==='Onboarded'?'':btn('Follow up','outcome',lead.id)}</div>`).join('')||empty('No leads')}</article>`;
  }).join('')}</div></div>`;
 }
 
@@ -290,7 +310,7 @@ function renderTaskPerformance(){
   return e(value.toLocaleString('en-IN',{maximumFractionDigits:3}));
  };
  const linkedTask=t=>btn(e(t.title),'task',t.id);
- const finishedRows=finished.map(t=>`<tr><td>${linkedTask(t)}</td><td>${e(t.owner||'Unassigned')}</td><td>${e(t.actualOutput||'—')}</td><td>${taskPoints(t)||'—'}</td></tr>`);
+ const finishedRows=finished.map(t=>`<tr><td>${linkedTask(t)}</td><td>${e(assigneeLabel(t)||'Unassigned')}</td><td>${e(t.actualOutput||'—')}</td><td>${taskPoints(t)||'—'}</td></tr>`);
  const pendingRows=pending.map(t=>`<tr><td>${linkedTask(t)}</td><td>${e(t.expectedOutput||'—')}</td><td>${e(t.plannedDate||t.due)}</td><td>${pill(t.status)}</td></tr>`);
  const projectRows=data.projects.flatMap(project=>{
   const closed=finished.filter(t=>t.projectId===project.id&&t.taskType==='Project-based').length;
