@@ -169,13 +169,14 @@ async function syncSheetLead(access,env,id){
     const {columnCount,rowCount}=tab.gridProperties;
     const values=async range=>(await google('/values/'+encodeURIComponent(title+'!'+range)+'?valueRenderOption=FORMULA')).values||[];
     const headers=await values('A1:'+sheetColumn(columnCount-1)+Math.min(35,rowCount));
-    let columns,headerRow;
+    let columns,headerRow,serialColumn;
     for(const [index,row] of headers.entries()){
       const keys=row.map(sheetHeaderKey);
       const mapped=Object.fromEntries(Object.entries(sheetWriteFields).map(([field,aliases])=>[field,aliases.map(alias=>keys.indexOf(alias)).find(i=>i>=0)??-1]));
       if(mapped.name<0||mapped.phone<0)continue;
       columns=mapped;
       headerRow=index+1;
+      serialColumn=keys.findIndex(key=>['sq','serial','serialno','serialnumber','sno'].includes(key));
       break;
     }
     if(!columns)throw Error('No matching lead headers were found.');
@@ -183,10 +184,12 @@ async function syncSheetLead(access,env,id){
     const matches=[];
     const newPhone=sheetPhone(lead.phone);
     const replacementMatches=[];
+    let lastLeadRow=headerRow;
     for(let first=headerRow+1;first<=rowCount;first+=1000){
       const phones=await values(phoneColumn+first+':'+phoneColumn+Math.min(first+999,rowCount));
       phones.forEach((row,index)=>{
         const phone=sheetPhone(row[0]);
+        if(String(row[0]??'').trim()!=='')lastLeadRow=first+index;
         if(phone===identity)matches.push(first+index);
         if(newPhone&&phone===newPhone&&phone!==identity)replacementMatches.push(first+index);
       });
@@ -209,12 +212,34 @@ async function syncSheetLead(access,env,id){
       for(const [field,column] of Object.entries(columns)){
         if(column>=0)cells[column]=sheetLeadValue(lead,field);
       }
-      // Append cells from column A. values.append can shift the row to the logical table's first column.
-      await google(':batchUpdate',{requests:[{appendCells:{
-        sheetId:tab.sheetId,
-        rows:[{values:cells.map(value=>value?{userEnteredValue:{stringValue:value}}:{})}],
-        fields:'userEnteredValue'
-      }}]});
+      const nameColumn=sheetColumn(columns.name);
+      for(let last=rowCount;last>lastLeadRow;){
+        const first=Math.max(lastLeadRow+1,last-999);
+        const names=await values(nameColumn+first+':'+nameColumn+last);
+        const populated=names.findLastIndex(row=>String(row[0]??'').trim()!=='');
+        if(populated>=0){lastLeadRow=first+populated;break;}
+        last=first-1;
+      }
+      let target;
+      const lastColumn=sheetColumn(columnCount-1);
+      for(let first=lastLeadRow+1;first<=rowCount&&target===undefined;first+=100){
+        const last=Math.min(first+99,rowCount);
+        const rows=await values('A'+first+':'+lastColumn+last);
+        for(let row=first;row<=last;row++){
+          if(!(rows[row-first]||[]).some((value,index)=>index!==serialColumn&&String(value??'').trim()!=='')){
+            target=row;
+            break;
+          }
+        }
+      }
+      const cellValues=cells.map(value=>value?{userEnteredValue:{stringValue:value}}:{});
+      const fields='userEnteredValue';
+      const requests=target===undefined?
+        [{appendCells:{sheetId:tab.sheetId,rows:[{values:cellValues}],fields}}]:
+        cellValues.flatMap((cell,columnIndex)=>cell.userEnteredValue?[{updateCells:{
+          start:{sheetId:tab.sheetId,rowIndex:target-1,columnIndex},rows:[{values:[cell]}],fields
+        }}]:[]);
+      await google(':batchUpdate',{requests});
       lead.sheetSnapshot=Object.fromEntries(Object.entries(columns).filter(([,column])=>column>=0)
         .map(([field,column])=>[field,cells[column]]));
       await finish();
