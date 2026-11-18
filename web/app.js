@@ -19,12 +19,17 @@ let leadPage=1;
 let page='My Day',filter='All leads',query='',taskFilter='Open',selected=new Set(),toastTimer;
 const nav=[
  {name:'Home',icon:'⌂',pages:['Overview','My Day','Review Queue','Inbox','Calendar']},
- {name:'Work',icon:'☷',pages:['Tasks','Projects']},
- {name:'Expert CRM',icon:'◎',pages:['Expert Leads','Pipeline']},
+ {name:'Daily Operations',icon:'☷',pages:['Tasks','Projects']},
+ {name:'Lead Generation',icon:'◎',pages:['Expert Leads','Pipeline','Lead Tasks']},
  {name:'People',icon:'♙',pages:['Employees','Attendance','Performance']},
  {name:'Messages',icon:'✉',pages:['Messages']},
  {name:'Settings',icon:'⚙',pages:['Integrations','Roles & Access']}
 ];
+const isOnboardingProject=project=>project&&(project.id==='expert-onboarding'||project.name?.trim().toLowerCase()==='expert onboarding');
+const isLeadTask=task=>Boolean(task.lead||data.projects.some(project=>project.id===task.projectId&&isOnboardingProject(project)));
+function leadGenerationTabs(active){
+ return `<div class="panel"><div class="toolbar filter-tabs" aria-label="Lead Generation views">${[['Leads','Expert Leads'],['Pipeline','Pipeline'],['Lead tasks','Lead Tasks']].map(([label,key])=>`<button type="button" data-act="nav" data-key="${key}" aria-pressed="${active===key}">${label}</button>`).join('')}</div></div>`;
+}
 const statuses=['New','Contacted','Follow-up','Interested','Registered','Verified','Program listed','Onboarded','Not reachable','Not interested','Invalid number','Do not contact'];
 const actions=['Initial call','Send details','Follow-up','Schedule meeting','Collect documents','Verify documents','Registration','Program listing','Complete onboarding'];
 const taskStatuses=['To do','In progress','Blocked','In review','Rework','Done'];
@@ -145,12 +150,14 @@ function renderPersonal(){
  const queues={Today:current,Overdue:overdue,Upcoming:upcoming,Review:mine.filter(task=>task.status==='In review')};
  dayTaskQueue||=current.length?'Today':overdue.length?'Overdue':'Today';
  const visible=queues[dayTaskQueue];
+ const operations=visible.filter(task=>!isLeadTask(task)), leadTasks=visible.filter(isLeadTask);
  const followUps=data.leads.filter(lead=>assignedTo(lead,currentName)&&lead.due&&lead.due<=today&&!['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status));
  const date=calLabel(today,{dateStyle:'full'});
  const tabs=Object.entries(queues).map(([label,items])=>`<button data-act="day-work-filter" data-key="${label}" aria-pressed="${dayTaskQueue===label}">${label} <span class="tab-count">${items.length}</span></button>`).join('');
  ui.innerHTML=`<div class="personal-heading"><div><div class="day-date">${e(date)} · IST</div><h1>${greeting()}, ${e(currentName)}.</h1></div><div class="actions">${btn('Full calendar','personal-calendar')}${isEmployee()?btn('Request leave','ops-request','Leave',true):btn('＋ New task','task','',true)}</div></div>
  <div class="split home-columns day-workspace"><div>
- ${panel('My work',`<div class="toolbar filter-tabs" aria-label="My work filters">${tabs}</div>`+(visible.length?visible.map(dayTaskRow).join(''):empty('No tasks in this queue.'))+`<div class="panel-foot">${btn('All my tasks','personal-tasks','Mine')}</div>`)}
+ ${panel('Daily operations',`<div class="toolbar filter-tabs" aria-label="My work filters">${tabs}</div>`+(operations.length?operations.map(dayTaskRow).join(''):empty('No operations tasks in this queue.'))+`<div class="panel-foot">${btn('All my operations tasks','personal-tasks','Mine')}</div>`)}
+ ${panel('Lead generation',leadTasks.length?leadTasks.map(dayTaskRow).join('')+`<div class="panel-foot">${btn('My lead tasks','personal-lead-tasks','Mine')}</div>`:empty('No lead tasks in this queue.')+`<div class="panel-foot">${btn('My lead tasks','personal-lead-tasks','Mine')}</div>`)}
  ${followUps.length?panel('Expert follow-ups due',followUps.slice(0,6).map(lead=>listItem(lead.name,'Due '+lead.due,btn('Follow up','outcome',lead.id))).join('')):''}
  </div>
  <div>${notificationPanel()}${panel('My schedule',dayAgenda())}
@@ -177,7 +184,7 @@ function dayAgenda(){
 }
 function renderHome(open,unassigned,due){
  const today=day();
- const tasks=open.filter(task=>!(task.lead&&task.projectId)).sort((a,b)=>(a.status!=='Rework')-(b.status!=='Rework')||(a.due||'9999').localeCompare(b.due||'9999'));
+ const tasks=open.filter(task=>!isLeadTask(task)).sort((a,b)=>(a.status!=='Rework')-(b.status!=='Rework')||(a.due||'9999').localeCompare(b.due||'9999'));
  const followUps=due;
  const meetings=data.events.filter(item=>item.date===today&&item.category!=='Holiday').sort((a,b)=>(a.time||'').localeCompare(b.time||''));
  const bars=[
@@ -195,10 +202,10 @@ function renderHome(open,unassigned,due){
 }
 
 function render(){
- const module=nav.find(item=>item.pages.includes(page));
+ const module=nav.find(item=>item.pages.includes(page==='Projects'&&isOnboardingProject(data.projects.find(project=>project.id===projectSelection))?'Lead Tasks':page));
  $('aside footer').innerHTML=`<span class="profile-avatar">${e(currentName.split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase())}</span><span class="profile-label"><strong>${e(currentName)}</strong><small>${e(role)}</small></span>`;
- const entries=[[isFounder()?'Overview':'My Day','◷','Home'],['Expert Leads','◎','Expert CRM'],['Tasks','☷','Work'],['Messages','✉','Messages'],['Attendance','♙','People'],['Integrations','⚙','Settings']];
- const labels={'Expert Leads':'Experts',Tasks:'Work',Attendance:isEmployee()?'Attendance':'Team',Integrations:'Settings'};
+ const entries=[[isFounder()?'Overview':'My Day','◷','Home'],['Expert Leads','◎','Lead Generation'],['Tasks','☷','Daily Operations'],['Messages','✉','Messages'],['Attendance','♙','People'],['Integrations','⚙','Settings']];
+ const labels={'Expert Leads':'Lead Generation',Tasks:'Daily Operations',Attendance:isEmployee()?'Attendance':'Team',Integrations:'Settings'};
  $('nav').innerHTML=entries.filter(([name])=>name!=='Integrations'||isSuperAdmin()).map(([name,icon,group])=>{
   const active=module.name===group;
   return `<button ${active?'class="active" aria-current="page"':''} data-act="nav" data-key="${name}"><i aria-hidden="true">${icon}</i>${labels[name]||name}</button>`;
@@ -246,15 +253,16 @@ function render(){
  });
  const caption=visible.length?`Showing ${start+1}–${start+shown.length} of ${visible.length}`:'0 leads';
  const pager=`<div class="lead-pagination"><span>${caption}</span><div><button data-act="lead-page" data-key="-1" ${leadPage===1?'disabled':''}>Previous</button><span>${leadPage} / ${totalPages}</span><button data-act="lead-page" data-key="1" ${leadPage===totalPages?'disabled':''}>Next</button></div></div>`;
- ui.innerHTML=title('Experts','Manage assignments, outreach and onboarding.',btn('Pipeline','expert-view','Pipeline')+(isEmployee()?'':(isSuperAdmin()?btn('Import from Sheet','nav','Integrations'):btn('Import CSV','import'))+btn('＋ Quick capture','quick-lead','',true)+btn('Add lead','lead')))+
+ ui.innerHTML=title('Lead Generation','Manage assignments, outreach and onboarding.',(isEmployee()?'':(isSuperAdmin()?btn('Import from Sheet','nav','Integrations'):btn('Import CSV','import'))+btn('＋ Quick capture','quick-lead','',true)+btn('Add lead','lead')))+leadGenerationTabs('Expert Leads')+
  `<section class="panel leads-panel"><div class="toolbar"><input id="search" aria-label="Search leads" placeholder="Search experts, cities, or owners" value="${e(query)}"><span class="results-count">${visible.length} ${visible.length===1?'lead':'leads'}</span>${checkbox?btn('Export CSV','export'):''}</div><div class="filter-tabs lead-tabs" aria-label="Lead filters">${tabs}</div>${checkbox&&selected.size?`<div class="bulk-toolbar"><strong>${selected.size} selected</strong>${btn('Clear','lead-clear')}${btn('Assign selected','assign','',true)}</div>`:''}
  ${shown.length?`<div class="lead-table-scroll ${checkbox?'with-selection':''}">${table(heads,rows)}</div>${pager}`:empty('No leads match this view.')}</section>`;
  $('#search').oninput=event=>{query=event.target.value;leadPage=1;selected.clear();const pos=event.target.selectionStart;render();$('#search').focus();$('#search').setSelectionRange(pos,pos)};
  if($('#all'))$('#all').onchange=event=>{shown.forEach(lead=>event.target.checked?selected.add(lead.id):selected.delete(lead.id));render()};
 
  }
- if(page==='Tasks'){
- const scope=personalTaskScope?data.tasks.filter(task=>assignedTo(task,currentName)):data.tasks;
+ if(page==='Tasks'||page==='Lead Tasks'){
+ const leadView=page==='Lead Tasks';
+ const scope=data.tasks.filter(task=>isLeadTask(task)===leadView&&(!personalTaskScope||assignedTo(task,currentName)));
  const waiting=task=>task.status!=='Done'&&task.status!=='In review';
  const tasks=scope.filter(t=>taskFilter==='All'||taskFilter==='Open'&&t.status!=='Done'||
  taskFilter==='Mine'&&t.status!=='Done'&&assignedTo(t,currentName)||
@@ -276,7 +284,12 @@ function render(){
  const standalone=tasks.filter(task=>!projects.has(task.projectId));
  const groups=[...projects].map(([key,project])=>({project,items:tasks.filter(task=>task.projectId===key)})).filter(group=>group.items.length);
  const grouped=groups.map(({project,items})=>`<details class="work-project-group"><summary><strong>${e(project.name)}</strong><span>${items.length} ${items.length===1?'task':'tasks'}</span></summary><div class="toolbar">${btn('Open project','ops-project',project.id)}</div>${taskViewContent(items)}</details>`).join('');
- ui.innerHTML=title(personalTaskScope?'My tasks':'Work',isEmployee()?'Open a task to update or submit your work.':'Assign work, track time and review submissions.',btn('Projects','ops-project')+btn('Performance','nav','Performance')+(isEmployee()?'':btn('＋ New task','task','',true)))+
+ const section=leadView?'Lead tasks':'Daily operations';
+ const controls=leadView?(isEmployee()?'':btn('＋ Quick capture','quick-lead','',true)):
+   btn('Projects','ops-project')+btn('Performance','nav','Performance')+(isEmployee()?'':btn('＋ New task','task','',true));
+ ui.innerHTML=title(personalTaskScope?'My '+section.toLowerCase():section,
+ leadView?'Work on expert research and outreach.':'Manage day-to-day tasks and operational projects.',controls)+
+ (leadView?leadGenerationTabs('Lead Tasks'):'')+
  `<div class="panel"><div class="toolbar view-toolbar"><div class="filter-tabs" aria-label="Task filters">${filters.map(name=>`<button data-act="task-tab" data-key="${name}" aria-pressed="${name===taskFilter}">${name==='Mine'?'All open':name}</button>`).join('')}</div><div class="segments" aria-label="Task view">${['List','Board','Due dates'].map(name=>`<button data-act="task-view" data-key="${name}" aria-pressed="${name===taskView}">${name}</button>`).join('')}</div></div>${grouped}${standalone.length?taskViewContent(standalone):tasks.length?'':empty('No tasks match this filter.')}</div>`;
 
  }
@@ -406,7 +419,7 @@ document.addEventListener('click',async ev=>{
 
  if(act==='inbox-refresh'){await load();return}
  if(act==='template'&&!isEmployee()){chooseTemplate(key);return}
- if(act==='personal-tasks'){personalTaskScope=true;taskFilter=key;page='Tasks';render();return}
+ if(act==='personal-tasks'||act==='personal-lead-tasks'){personalTaskScope=true;taskFilter=key;page=act==='personal-lead-tasks'?'Lead Tasks':'Tasks';render();return}
  if(act==='personal-calendar'||act==='nav'&&key==='Calendar'){
   page='My Day';fullCalendarOpen=true;
   calendarDate=agendaDate||day();
@@ -452,7 +465,7 @@ document.addEventListener('click',async ev=>{
  if(isEmployee()&&!key&&['lead','task','project','event'].includes(act))return;
  if(act.startsWith('cal-')){calendarAction(act,key);return}
  if(act.startsWith('msg-')){messageAction(act,key);return}
- if(act==='nav'||act==='queue'){closeNavigation();if(key==='Tasks'){personalTaskScope=false;taskFilter='Open'}if(key==='Expert Leads'){expertView='List';leadPage=1}page=act==='queue'?'Expert Leads':key;filter=act==='queue'?'Unassigned':b.dataset.filter||(isEmployee()?'My leads':'All leads');query='';selected.clear();render();ui.focus({preventScroll:true});return}
+ if(act==='nav'||act==='queue'){closeNavigation();if(key==='Tasks'||key==='Lead Tasks'){personalTaskScope=false;taskFilter='Open'}if(key==='Expert Leads'){expertView='List';leadPage=1}page=act==='queue'?'Expert Leads':key;filter=act==='queue'?'Unassigned':b.dataset.filter||(isEmployee()?'My leads':'All leads');query='';selected.clear();render();ui.focus({preventScroll:true});return}
  if(act==='attendance'&&!isFounder()){
  const a=data.attendance[day()]||={};
  const now=Date.now();

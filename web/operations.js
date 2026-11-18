@@ -99,7 +99,7 @@ function renderProjects(){
  const project=data.projects.find(item=>item.id===projectSelection);
  if(!project){
   ui.innerHTML=title('Projects','Project owners, members, milestones and work.',isEmployee()?'':btn('＋ New project','project','',true))+
-  panel('Projects',data.projects.map(item=>{
+  panel('Projects',data.projects.filter(project=>!isOnboardingProject(project)).map(item=>{
    const linked=data.tasks.filter(task=>task.projectId===item.id);
    return listItem(item.name,[item.owner,item.due,linked.length+' tasks'].filter(Boolean).join(' · '),btn('Open','ops-project',item.id));
   }).join('')||empty('No projects yet.'));
@@ -118,7 +118,7 @@ function renderProjects(){
   Members:members.map(name=>listItem(name,name===project.owner?'Project owner':'Project member')).join('')||empty('No project members yet.')
  };
  ui.innerHTML=title(e(project.name),[project.owner?'Owner: '+project.owner:'',project.due?'Target: '+project.due:''].filter(Boolean).map(e).join(' · '),
- btn('Back to Work','nav','Tasks')+(isEmployee()?'':btn('Edit project','project',project.id)+btn('＋ Add task','task','',true)))+
+ (isOnboardingProject(project)?btn('Back to lead tasks','nav','Lead Tasks'):btn('Back to Daily Operations','nav','Tasks'))+(isEmployee()?'':btn('Edit project','project',project.id)+btn('＋ Add task','task','',true)))+
  `<div class="panel project-progress"><div><strong>${completed}% complete</strong><small>${done} of ${tasks.length} visible tasks</small></div><progress max="100" value="${completed}" aria-label="Project progress"></progress></div>`+
  (project.note?`<p>${e(project.note)}</p>`:'')+`<article class="panel">${projectTabs}${content[projectTab]}</article>`;
 }
@@ -281,7 +281,7 @@ function renderPipeline(){
   ['Registered',['Registered']],['Verified',['Verified']],['Program listed',['Program listed','Onboarded']],
   ['Closed',['Not interested','Invalid number','Do not contact']]
  ];
- ui.innerHTML=title('Expert pipeline','See each expert’s stage, owner, and next action.',btn('Lead list','expert-view','List'))+
+ ui.innerHTML=title('Expert pipeline','See each expert’s stage, owner, and next action.')+leadGenerationTabs('Pipeline')+
  `<div class="panel"><div class="project-board pipeline-board">${stages.map(([stage,statuses])=>{
   const leads=data.leads.filter(lead=>statuses.includes(lead.status));
   return `<article><div class="board-heading"><strong>${stage}</strong><span class="tab-count">${leads.length}</span></div>${leads.map(lead=>`<div class="pipeline-record"><button class="link" data-act="lead" data-key="${e(lead.id)}">${e(lead.name)}</button><small>${e(assigneeLabel(lead)||'Unassigned')}</small>${pill(lead.status)}<p>${e(lead.action||'No next action')}${lead.due?' · '+e(lead.due):''}</p>${stage==='Closed'||lead.status==='Onboarded'?'':btn('Follow up','outcome',lead.id)}</div>`).join('')||empty('No leads')}</article>`;
