@@ -19,16 +19,19 @@ let leadPage=1;
 let page='My Day',filter='All leads',query='',taskFilter='Open',selected=new Set(),toastTimer;
 const nav=[
  {name:'Home',icon:'⌂',pages:['Overview','My Day','Review Queue','Inbox','Calendar']},
- {name:'Daily Operations',icon:'☷',pages:['Tasks','Projects']},
- {name:'Lead Generation',icon:'◎',pages:['Expert Leads','Pipeline','Lead Tasks']},
- {name:'People',icon:'♙',pages:['Employees','Attendance','Performance']},
+ {name:'Operations',icon:'☷',pages:['Tasks','Projects']},
+ {name:'Marketing',icon:'◈',pages:['Marketing Tasks']},
+ {name:'Sales',icon:'◎',pages:['Expert Leads','Pipeline','Lead Tasks']},
+ {name:'Team',icon:'♙',pages:['Employees','Attendance','Performance']},
  {name:'Messages',icon:'✉',pages:['Messages']},
  {name:'Settings',icon:'⚙',pages:['Integrations','Roles & Access']}
 ];
 const isOnboardingProject=project=>project&&(project.id==='expert-onboarding'||project.name?.trim().toLowerCase()==='expert onboarding');
 const isLeadTask=task=>Boolean(task.lead||data.projects.some(project=>project.id===task.projectId&&isOnboardingProject(project)));
+const taskSection=task=>isLeadTask(task)||task.department==='Expert acquisition'?'Sales':
+ ['Marketing','Content','Social media'].includes(task.department)?'Marketing':'Operations';
 function leadGenerationTabs(active){
- return `<div class="panel"><div class="toolbar filter-tabs" aria-label="Lead Generation views">${[['Leads','Expert Leads'],['Pipeline','Pipeline'],['Lead tasks','Lead Tasks']].map(([label,key])=>`<button type="button" data-act="nav" data-key="${key}" aria-pressed="${active===key}">${label}</button>`).join('')}</div></div>`;
+ return `<div class="panel"><div class="toolbar filter-tabs" aria-label="Sales views">${[['Leads','Expert Leads'],['Pipeline','Pipeline'],['Lead tasks','Lead Tasks']].map(([label,key])=>`<button type="button" data-act="nav" data-key="${key}" aria-pressed="${active===key}">${label}</button>`).join('')}</div></div>`;
 }
 const statuses=['New','Contacted','Follow-up','Interested','Registered','Verified','Program listed','Onboarded','Not reachable','Not interested','Invalid number','Do not contact'];
 const actions=['Initial call','Send details','Follow-up','Schedule meeting','Collect documents','Verify documents','Registration','Program listing','Complete onboarding'];
@@ -60,6 +63,7 @@ async function load(){
   $('#quick').disabled=false;$('#quick').hidden=isEmployee();
   if(isEmployee()&&page==='Overview')page='My Day';
   render();
+  void sendWorkspacePresence();
   void refreshAlerts();
   void processSheetQueue().finally(autoPullSheet);
  }catch(error){
@@ -150,14 +154,15 @@ function renderPersonal(){
  const queues={Today:current,Overdue:overdue,Upcoming:upcoming,Review:mine.filter(task=>task.status==='In review')};
  dayTaskQueue||=current.length?'Today':overdue.length?'Overdue':'Today';
  const visible=queues[dayTaskQueue];
- const operations=visible.filter(task=>!isLeadTask(task)), leadTasks=visible.filter(isLeadTask);
+ const operations=visible.filter(task=>taskSection(task)==='Operations'), leadTasks=visible.filter(task=>taskSection(task)==='Sales'), marketing=visible.filter(task=>taskSection(task)==='Marketing');
  const followUps=data.leads.filter(lead=>assignedTo(lead,currentName)&&lead.due&&lead.due<=today&&!['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status));
  const date=calLabel(today,{dateStyle:'full'});
  const tabs=Object.entries(queues).map(([label,items])=>`<button data-act="day-work-filter" data-key="${label}" aria-pressed="${dayTaskQueue===label}">${label} <span class="tab-count">${items.length}</span></button>`).join('');
  ui.innerHTML=`<div class="personal-heading"><div><div class="day-date">${e(date)} · IST</div><h1>${greeting()}, ${e(currentName)}.</h1></div><div class="actions">${btn('Full calendar','personal-calendar')}${isEmployee()?btn('Request leave','ops-request','Leave',true):btn('＋ New task','task','',true)}</div></div>
  <div class="split home-columns day-workspace"><div>
  ${panel('Daily operations',`<div class="toolbar filter-tabs" aria-label="My work filters">${tabs}</div>`+(operations.length?operations.map(dayTaskRow).join(''):empty('No operations tasks in this queue.'))+`<div class="panel-foot">${btn('All my operations tasks','personal-tasks','Mine')}</div>`)}
- ${panel('Lead generation',leadTasks.length?leadTasks.map(dayTaskRow).join('')+`<div class="panel-foot">${btn('My lead tasks','personal-lead-tasks','Mine')}</div>`:empty('No lead tasks in this queue.')+`<div class="panel-foot">${btn('My lead tasks','personal-lead-tasks','Mine')}</div>`)}
+ ${panel('Marketing',marketing.length?marketing.map(dayTaskRow).join(''):empty('No marketing tasks in this queue.'))}
+ ${panel('Sales and lead generation',leadTasks.length?leadTasks.map(dayTaskRow).join('')+`<div class="panel-foot">${btn('My lead tasks','personal-lead-tasks','Mine')}</div>`:empty('No lead tasks in this queue.')+`<div class="panel-foot">${btn('My lead tasks','personal-lead-tasks','Mine')}</div>`)}
  ${followUps.length?panel('Expert follow-ups due',followUps.slice(0,6).map(lead=>listItem(lead.name,'Due '+lead.due,btn('Follow up','outcome',lead.id))).join('')):''}
  </div>
  <div>${notificationPanel()}${panel('My schedule',dayAgenda())}
@@ -184,7 +189,7 @@ function dayAgenda(){
 }
 function renderHome(open,unassigned,due){
  const today=day();
- const tasks=open.filter(task=>!isLeadTask(task)).sort((a,b)=>(a.status!=='Rework')-(b.status!=='Rework')||(a.due||'9999').localeCompare(b.due||'9999'));
+ const tasks=open.filter(task=>taskSection(task)==='Operations').sort((a,b)=>(a.status!=='Rework')-(b.status!=='Rework')||(a.due||'9999').localeCompare(b.due||'9999'));
  const followUps=due;
  const meetings=data.events.filter(item=>item.date===today&&item.category!=='Holiday').sort((a,b)=>(a.time||'').localeCompare(b.time||''));
  const bars=[
@@ -204,12 +209,15 @@ function renderHome(open,unassigned,due){
 function render(){
  const module=nav.find(item=>item.pages.includes(page==='Projects'&&isOnboardingProject(data.projects.find(project=>project.id===projectSelection))?'Lead Tasks':page));
  $('aside footer').innerHTML=`<span class="profile-avatar">${e(currentName.split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase())}</span><span class="profile-label"><strong>${e(currentName)}</strong><small>${e(role)}</small></span>`;
- const entries=[[isFounder()?'Overview':'My Day','◷','Home'],['Expert Leads','◎','Lead Generation'],['Tasks','☷','Daily Operations'],['Messages','✉','Messages'],['Attendance','♙','People'],['Integrations','⚙','Settings']];
- const labels={'Expert Leads':'Lead Generation',Tasks:'Daily Operations',Attendance:isEmployee()?'Attendance':'Team',Integrations:'Settings'};
+ const entries=[[isFounder()?'Overview':'My Day','◷','Home'],['Tasks','☷','Operations'],['Marketing Tasks','◈','Marketing'],['Expert Leads','◎','Sales'],['Messages','✉','Messages'],['Attendance','♙','Team'],['Integrations','⚙','Settings']];
+ const labels={'Expert Leads':'Sales',Tasks:'Operations','Marketing Tasks':'Marketing',Attendance:'Team',Integrations:'Settings'};
  $('nav').innerHTML=entries.filter(([name])=>name!=='Integrations'||isSuperAdmin()).map(([name,icon,group])=>{
   const active=module.name===group;
   return `<button ${active?'class="active" aria-current="page"':''} data-act="nav" data-key="${name}"><i aria-hidden="true">${icon}</i>${labels[name]||name}</button>`;
  }).join('');
+ const todayAttendance=data.attendance[day()]||{};
+ $('#attendance-header').innerHTML=todayAttendance.out?'<span>Checked out</span>':todayAttendance.in?
+  btn('Check out','attendance','out'):btn('Check in','attendance','in',true);
  $('#subnav').hidden=true;
  $('#crumb').textContent=module.name===page?page:module.name+' / '+page;
  const open=data.tasks.filter(t=>t.status!=='Done'), unassigned=data.leads.filter(l=>!l.owner), due=data.leads.filter(l=>l.due&&l.due<=day()&&!['Do not contact','Not interested','Onboarded','Invalid number'].includes(l.status));
@@ -260,9 +268,10 @@ function render(){
  if($('#all'))$('#all').onchange=event=>{shown.forEach(lead=>event.target.checked?selected.add(lead.id):selected.delete(lead.id));render()};
 
  }
- if(page==='Tasks'||page==='Lead Tasks'){
+ if(['Tasks','Lead Tasks','Marketing Tasks'].includes(page)){
  const leadView=page==='Lead Tasks';
- const scope=data.tasks.filter(task=>isLeadTask(task)===leadView&&(!personalTaskScope||assignedTo(task,currentName)));
+ const group=leadView?'Sales':page==='Marketing Tasks'?'Marketing':'Operations';
+ const scope=data.tasks.filter(task=>taskSection(task)===group&&(!personalTaskScope||assignedTo(task,currentName)));
  const waiting=task=>task.status!=='Done'&&task.status!=='In review';
  const tasks=scope.filter(t=>taskFilter==='All'||taskFilter==='Open'&&t.status!=='Done'||
  taskFilter==='Mine'&&t.status!=='Done'&&assignedTo(t,currentName)||
@@ -284,11 +293,11 @@ function render(){
  const standalone=tasks.filter(task=>!projects.has(task.projectId));
  const groups=[...projects].map(([key,project])=>({project,items:tasks.filter(task=>task.projectId===key)})).filter(group=>group.items.length);
  const grouped=groups.map(({project,items})=>`<details class="work-project-group"><summary><strong>${e(project.name)}</strong><span>${items.length} ${items.length===1?'task':'tasks'}</span></summary><div class="toolbar">${btn('Open project','ops-project',project.id)}</div>${taskViewContent(items)}</details>`).join('');
- const section=leadView?'Lead tasks':'Daily operations';
+ const section=leadView?'Lead tasks':group;
  const controls=leadView?(isEmployee()?'':btn('＋ Quick capture','quick-lead','',true)):
    btn('Projects','ops-project')+btn('Performance','nav','Performance')+(isEmployee()?'':btn('＋ New task','task','',true));
  ui.innerHTML=title(personalTaskScope?'My '+section.toLowerCase():section,
- leadView?'Work on expert research and outreach.':'Manage day-to-day tasks and operational projects.',controls)+
+ leadView?'Work on expert research and outreach.':group==='Marketing'?'Manage campaigns, content and social media tasks.':'Manage day-to-day tasks and operational projects.',controls)+
  (leadView?leadGenerationTabs('Lead Tasks'):'')+
  `<div class="panel"><div class="toolbar view-toolbar"><div class="filter-tabs" aria-label="Task filters">${filters.map(name=>`<button data-act="task-tab" data-key="${name}" aria-pressed="${name===taskFilter}">${name==='Mine'?'All open':name}</button>`).join('')}</div><div class="segments" aria-label="Task view">${['List','Board','Due dates'].map(name=>`<button data-act="task-view" data-key="${name}" aria-pressed="${name===taskView}">${name}</button>`).join('')}</div></div>${grouped}${standalone.length?taskViewContent(standalone):tasks.length?'':empty('No tasks match this filter.')}</div>`;
 
@@ -298,6 +307,8 @@ function render(){
 
  if(page==='Attendance'&&isFounder())ui.innerHTML=title('Team','Manage team workload and availability.',btn('Approvals','nav','Review Queue'))+teamDirectory();
  else if(page==='Attendance')ui.innerHTML=title(isEmployee()?'Attendance':'Team','Track check-ins, breaks and working hours.',btn('New request','ops-request'))+panel('Today',attendanceCard())+panel('Attendance history',table(['Date','Check-in','Check-out','Working time'],Object.entries(data.attendance).sort().reverse().map(([d,a])=>`<tr><td>${d}</td><td>${clock(a.in)}</td><td>${clock(a.out)}</td><td>${a.out?duration(a.out-a.in-(a.breakMs||0)):'In progress'}</td></tr>`)))+personalRequests()+teamDirectory()+teamPerformance();
+ if(page==='Attendance')ui.insertAdjacentHTML('beforeend','<p>While you use the ERP, it records your active section, approximate time, and network IP for the Super Admin’s activity view.</p>');
+ if(page==='Attendance'&&isSuperAdmin()){ui.insertAdjacentHTML('beforeend',presencePanelPlaceholder());void refreshPresencePanel();}
  if(page==='Employees'){page='Attendance';render();return}
  if(page==='Performance'){renderTaskPerformance();return}
  if(page==='Messages')renderMessages();
@@ -465,10 +476,11 @@ document.addEventListener('click',async ev=>{
  if(isEmployee()&&!key&&['lead','task','project','event'].includes(act))return;
  if(act.startsWith('cal-')){calendarAction(act,key);return}
  if(act.startsWith('msg-')){messageAction(act,key);return}
- if(act==='nav'||act==='queue'){closeNavigation();if(key==='Tasks'||key==='Lead Tasks'){personalTaskScope=false;taskFilter='Open'}if(key==='Expert Leads'){expertView='List';leadPage=1}page=act==='queue'?'Expert Leads':key;filter=act==='queue'?'Unassigned':b.dataset.filter||(isEmployee()?'My leads':'All leads');query='';selected.clear();render();ui.focus({preventScroll:true});return}
- if(act==='attendance'&&!isFounder()){
+ if(act==='nav'||act==='queue'){closeNavigation();if(['Tasks','Lead Tasks','Marketing Tasks'].includes(key)){personalTaskScope=false;taskFilter='Open'}if(key==='Expert Leads'){expertView='List';leadPage=1}page=act==='queue'?'Expert Leads':key;filter=act==='queue'?'Unassigned':b.dataset.filter||(isEmployee()?'My leads':'All leads');query='';selected.clear();render();ui.focus({preventScroll:true});return}
+ if(act==='attendance'){
  const a=data.attendance[day()]||={};
  const now=Date.now();
+ if(a.out||key==='in'&&a.in||key!=='in'&&!a.in)return;
  if(key==='in')a.in=now;
  if(key==='break'&&!a.pause)a.pause=now;
  else if(a.pause){a.breakMs=(a.breakMs||0)+now-a.pause;delete a.pause}
@@ -505,7 +517,7 @@ document.addEventListener('click',async ev=>{
  if(act==='outcome'){if(modal.open)modal.close();openLeadOutcome(key);return}
  if(act==='task'){
  if(modal.open)modal.close();
- const t=data.tasks.find(x=>x.id===key)||{id:id(),status:'To do',priority:'Medium',start:day(),due:day(),projectId:page==='Projects'?projectSelection:''};
+ const t=data.tasks.find(x=>x.id===key)||{id:id(),status:'To do',priority:'Medium',start:day(),due:day(),projectId:page==='Projects'?projectSelection:'',department:page==='Marketing Tasks'?'Marketing':undefined};
  const researchLead=t.status!=='Done'&&t.lead&&data.leads.find(lead=>lead.id===t.lead&&lead.researchReturnTo&&assignedTo(lead,currentName));
  if(researchLead){openLeadResearch(researchLead);return;}
  if(isEmployee()){
@@ -787,5 +799,5 @@ async function enableDesktopNotifications(){
  }
 }
 $('#desktop-alerts').onclick=()=>{page='Inbox';render();void refreshAlerts();};
-setInterval(()=>{void refreshAlerts();void processSheetQueue().finally(autoPullSheet)},60000);
+setInterval(()=>{void sendWorkspacePresence();if(page==='Attendance'&&isSuperAdmin())void refreshPresencePanel();void refreshAlerts();void processSheetQueue().finally(autoPullSheet)},60000);
 load();

@@ -84,6 +84,6 @@ function mergeTeamState(access, value) {
       else delete task.timer;
     }
   }
-  if(access.role!=='Founder')(state.attendanceByUser ||= {})[access.user] = value.attendance;
+  (state.attendanceByUser ||= {})[access.user] = value.attendance;
   return state;
 }

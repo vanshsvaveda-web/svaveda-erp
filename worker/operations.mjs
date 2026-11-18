@@ -157,3 +157,35 @@ function completeLeadResearch(access,state,command) {
     note:researchNotes,handoffReady:true});
   audit(state,access,'Returned expert details to '+founder,name);
 }
+
+async function workspacePresence(request,env) {
+  const access=await accessFor(request,env.DB);
+  if(!access?.state)return json({error:'Workspace seat required.'},403);
+  const date=todayIST();
+  if(request.method==='GET'){
+    if(access.role!=='Super Admin')return json({error:'Super Admin access required.'},403);
+    const {results}=await env.DB.prepare('select name, section, last_seen, host(last_ip) as ip, minutes_by_section from public.workspace_presence where workspace_id = ? and work_day = ? order by last_seen desc').bind(access.workspace,date).all();
+    return json({people:results});
+  }
+  if(request.method!=='POST'||request.headers.get('Origin')!==new URL(request.url).origin)
+    return json({error:'Invalid presence request.'},403);
+  const body=await readPayload(request).catch(()=>null);
+  if(!['Home','Operations','Marketing','Sales','Team','Messages','Settings'].includes(body?.section))
+    return json({error:'Invalid workspace section.'},400);
+  const now=Date.now();
+  await env.DB.prepare(`
+    insert into public.workspace_presence(workspace_id,user_id,work_day,name,section,last_seen,last_ip)
+    values (?,?,?,?,?,?,?::inet)
+    on conflict (workspace_id,user_id,work_day) do update set
+      name=excluded.name,section=excluded.section,last_seen=excluded.last_seen,
+      last_ip=coalesce(excluded.last_ip,workspace_presence.last_ip),
+      minutes_by_section=case when excluded.last_seen-workspace_presence.last_seen between 45000 and 90000
+        then jsonb_set(workspace_presence.minutes_by_section,array[workspace_presence.section],
+          to_jsonb(coalesce((workspace_presence.minutes_by_section->>workspace_presence.section)::int,0)+1))
+        else workspace_presence.minutes_by_section end
+    where excluded.last_seen-workspace_presence.last_seen>=45000
+  `).bind(access.workspace,access.user,date,access.name,body.section,now,env.CLIENT_IP||null).run();
+  await env.DB.prepare("delete from public.workspace_presence where workspace_id = ? and user_id = ? and work_day < current_date - 30")
+    .bind(access.workspace,access.user).run();
+  return json({ok:true});
+}

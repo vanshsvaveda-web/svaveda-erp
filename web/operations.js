@@ -352,3 +352,33 @@ function renderTaskPerformance(){
  panel('Business impact',kpis.size?table(['Department','KPI','Unit','Rollup','Target','Actual'],[...kpis.values()].map(k=>`<tr><td>${e(k.department)}</td><td>${e(k.label)}</td><td>${e(k.unit||'—')}</td><td>${e(k.rollup)}</td><td>${showKpi(k.target,k.rollup)}</td><td>${showKpi(k.actual,k.rollup)}</td></tr>`)):empty('Record a KPI and its result on a completed task to see it here.'));
  $('#performance-date').onchange=event=>{if(event.target.value){performanceDate=event.target.value;render();}};
 }
+
+let lastWorkspaceInteraction=Date.now();
+for(const event of ['pointerdown','keydown','touchstart','scroll']){
+ document.addEventListener(event,()=>{lastWorkspaceInteraction=Date.now()},{passive:true,capture:true});
+}
+async function sendWorkspacePresence(){
+ if(!data||document.visibilityState!=='visible'||Date.now()-lastWorkspaceInteraction>90000)return;
+ const section=nav.find(item=>item.pages.includes(page==='Projects'&&isOnboardingProject(data.projects.find(project=>project.id===projectSelection))?'Lead Tasks':page))?.name;
+ if(!section)return;
+ try{await fetch('/api/presence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({section})});}catch{}
+}
+const presencePanelPlaceholder=()=>panel('ERP activity today','<div id="team-presence" aria-live="polite"><p class="item">Loading activity…</p></div>');
+async function refreshPresencePanel(){
+ const target=$('#team-presence');
+ if(!target)return;
+ try{
+  const response=await fetch('/api/presence');
+  if(!response.ok)throw Error('Could not load workspace activity.');
+  const {people}=await response.json();
+  if(!target.isConnected)return;
+  const active=person=>Date.now()-Number(person.last_seen)<120000;
+  target.innerHTML='<p class="item">Approximate activity in this ERP. An IP may be shared by several people or change between networks.</p>'+
+   (people.length?table(['Person','Activity','Last section','Time by section','Last IP'],people.map(person=>{
+    const peers=people.filter(other=>other!==person&&active(other)&&other.ip);
+    const different=person.ip&&active(person)&&peers.length&&!peers.some(other=>other.ip===person.ip);
+    const time=Object.entries(person.minutes_by_section||{}).map(([name,minutes])=>e(name)+' '+Number(minutes)+'m').join(' · ');
+    return `<tr><td>${e(person.name)}</td><td>${active(person)?'Active':'Last seen '+clock(Number(person.last_seen))}</td><td>${e(person.section)}</td><td>${time||'—'}</td><td>${e(person.ip||'—')}${different?'<small>Different from active teammates</small>':''}</td></tr>`;
+   })):empty('No ERP activity recorded today.'));
+ }catch(error){if(target.isConnected)target.innerHTML=empty(e(error.message));}
+}

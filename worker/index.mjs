@@ -135,6 +135,7 @@ export default {
       if (!access?.state) return json({error:'Workspace seat required.'},403);
       return runScheduledSheetSync(env,access.workspace);
     }
+    if (path === '/api/presence') return workspacePresence(request,env);
     if (path === '/api/sheets/preview') return previewSheet(request,env);
     if (path === '/api/workspace' || path === '/api/messages' || path === '/api/messages/join' || path.startsWith('/api/messages/files/')) {
       try {
