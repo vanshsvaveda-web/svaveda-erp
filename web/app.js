@@ -64,8 +64,9 @@ async function load(){
   if(isEmployee()&&page==='Overview')page='My Day';
   render();
   void sendWorkspacePresence();
-  void refreshAlerts();
-  void processSheetQueue().finally(autoPullSheet);
+  nextSheetPull=Date.now()+60000;
+  void processSheetQueue();
+  void refreshMessageAlerts();
  }catch(error){
   ui.innerHTML='<div class="panel"><div class="empty">'+e(error.message)+' <button id="retry">Retry</button></div></div>';
   $('#retry').onclick=load;
@@ -746,8 +747,10 @@ function notificationPanel(full=false){
  }).join('')||empty('You’re caught up.');
  return panel('Notifications'+(unread?' · '+unread+' unread':''),rows+`<div class="panel-foot actions">${unread?btn('Mark all read','notifications-read'):''}${full?'':btn('View all','desktop-inbox')}</div>`);
 }
+const workspacePollHeaders=()=>({'X-Workspace-Version':encodeURIComponent(JSON.stringify([revision,role,currentName]))});
 async function updateWorkspace(){
- const response=await fetch('/api/workspace');
+ const response=await fetch('/api/workspace',{headers:workspacePollHeaders()});
+ if(response.status===204)return true;
  const result=await response.json();
  if(!response.ok)throw Error(result.error||'Could not check workspace updates.');
  if(result.name!==currentName||result.role!==role)return false;
@@ -757,21 +760,24 @@ async function updateWorkspace(){
  }
  return true;
 }
+async function refreshMessageAlerts(){
+ try{
+  const messages=await messageRequest();
+  messageAlerts=(messages.messages||[]).filter(message=>message.recipient===messages.user&&message.sender!==messages.user).slice(-20)
+   .map(message=>({id:'message:'+message.id,label:'New workspace message',subject:'Open Messages to read it',at:Number(message.created)||0,act:'nav',key:'Messages'}));
+ }catch{}
+}
 async function refreshAlerts(baseline=false){
  if(alertScan||busy||!data)return;
  alertScan=true;
  try{
   const startRevision=revision;
-  const response=await fetch('/api/workspace');
+  const response=await fetch('/api/workspace',{headers:workspacePollHeaders()});
   if(!response.ok)return;
-  const result=await response.json();
+  const result=response.status===204?{data,revision,role,name:currentName,seats:roleSeats}:await response.json();
   if(!result.data||result.role!==role||result.name!==currentName)return;
   const beforeMessages=messageAlerts.map(item=>item.id).join('|');
-  try{
-   const messages=await messageRequest();
-   messageAlerts=(messages.messages||[]).filter(message=>message.recipient===messages.user&&message.sender!==messages.user).slice(-20)
-    .map(message=>({id:'message:'+message.id,label:'New workspace message',subject:'Open Messages to read it',at:Number(message.created)||0,act:'nav',key:'Messages'}));
-  }catch{}
+  await refreshMessageAlerts();
   const entries=activityAlerts(result.data);
   const key='svaveda-desktop-v1-'+currentName;
   const previous=JSON.parse(localStorage.getItem(key)||'null');

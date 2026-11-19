@@ -30,6 +30,9 @@ async function workspace(request, env) {
   const access = await accessFor(request, env.DB);
   if (!access) return json({ error: 'A Super Admin must assign your sign-in email to a workspace seat.' }, 403);
   if (request.method === 'GET') {
+    const version=encodeURIComponent(JSON.stringify([access.revision,access.role,access.name]));
+    if(request.headers.get('X-Workspace-Version')===version)
+      return new Response(null,{status:204,headers:privateHeaders});
     return json({ revision: access.revision, data: scopedState(access), role: access.role, name: access.name,
       ...(access.role === 'Super Admin' ? { seats: access.seats } : {}) });
   }

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile, copyFile } from 'node:fs/promises';
 
 await rm('dist', { recursive: true, force: true });
@@ -23,6 +24,16 @@ if (process.env.VERCEL === '1' || process.env.SVAVEDA_VERCEL_BUILD === '1') {
   for (const file of ['style.css','app.js','calendar.js','messages.js','operations.js','task-metrics.js','assignees.js','lead-history.js']) await copyFile('web/'+file,'dist/public/'+file);
   worker = worker.replace(/const ownerHash = '[a-f0-9]*';/, "const ownerHash = process.env.SVAVEDA_OWNER_EMAIL_HASH || '';");
   assets['/'].body = assets['/'].body.replace('<div class="header-actions">', '<div class="header-actions"><form method="post" action="/api/sign-out"><button>Sign out</button></form>');
+}
+if (process.env.VERCEL === '1' || process.env.SVAVEDA_VERCEL_BUILD === '1') {
+  const version=createHash('sha256').update(JSON.stringify(assets)).digest('hex').slice(0,12);
+  for(const [path,asset] of Object.entries(assets)){
+    if(path==='/')continue;
+    const extension=path.lastIndexOf('.');
+    const hashed=path.slice(0,extension)+'.'+version+path.slice(extension);
+    await writeFile('dist/public'+hashed,asset.body);
+    assets['/'].body=assets['/'].body.replaceAll(path,hashed);
+  }
 }
 await writeFile('dist/server/index.js', 'const assets = ' + JSON.stringify(assets) + ';\n' + worker);
 await copyFile('.openai/hosting.json', 'dist/.openai/hosting.json');

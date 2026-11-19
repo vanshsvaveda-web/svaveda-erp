@@ -13,7 +13,7 @@ function databasePool() {
     ssl: { ca: supabaseCA, rejectUnauthorized: true },
     max: 2,
     connectionTimeoutMillis: 5000,
-    idleTimeoutMillis: 5000
+    idleTimeoutMillis: 60000
   });
 }
 
