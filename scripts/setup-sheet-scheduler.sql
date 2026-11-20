@@ -7,7 +7,7 @@ select cron.schedule('svaveda-sheets-every-five-minutes','*/5 * * * *',$job$
   select net.http_get(
     url := 'https://svaveda-workspace-personal.vercel.app/api/sheets/cron',
     headers := jsonb_build_object('Authorization', 'Bearer ' ||
-      (select decrypted_secret from vault.decrypted_secrets where name='svaveda_sheet_cron_bearer')),
+      (select decrypted_secret from vault.decrypted_secrets where name='svaveda_sheet_cron_bearer'), 'Connection', 'close'),
     timeout_milliseconds := 95000
   );
 $job$);
