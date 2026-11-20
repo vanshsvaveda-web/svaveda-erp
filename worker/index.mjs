@@ -130,7 +130,7 @@ async function workspace(request, env) {
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
-    if (path === '/api/sheets/cron' && env.SHEET_CRON_AUTHORIZED === true) return runScheduledSheetSync(env);
+    if (path === '/api/sheets/cron' && env.SHEET_CRON_AUTHORIZED === true) return backgroundSheetSync(env);
     if (path === '/api/sheets/process') {
       if (request.method !== 'POST' || request.headers.get('Origin') !== new URL(request.url).origin)
         return json({error:'Invalid sync request.'},403);

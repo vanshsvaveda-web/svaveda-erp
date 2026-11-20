@@ -220,24 +220,24 @@ async function pullSheet(link,connecting=false){
 async function autoPullSheet(){
  if(!isSuperAdmin()||!data?.sheetLink||busy||modal.open||Date.now()<nextSheetPull)return;
  nextSheetPull=Date.now()+5*60000;
- busy=true;
- try{
-  if(!await updateWorkspace())return;
-  if(data.sheetLink){
-   const result=await pullSheet(data.sheetLink);
-   if((result.added||result.updated)&&['Experts','Expert Leads','Pipeline','My Day','Tasks','Inbox'].includes(page)&&!document.activeElement?.matches('input,textarea,select'))render();
-  }
- }catch(error){data=structuredClone(committed);sheetError=error.message;}
- finally{busy=false;updateSyncLabel()}
+ try{await updateWorkspace();updateSyncLabel();}catch(error){sheetError=error.message;updateSyncLabel();}
 }
-function updateSyncLabel(){
+function updateSyncLabel(state=data){
  const label=$('#sheet-status');
- if(label)label.textContent=sheetWriteError?'Sync needs attention: '+sheetWriteError:sheetError?'Sync needs attention: '+sheetError:data.sheetSyncedAt?
-  'Last synced '+new Date(data.sheetSyncedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):'Waiting for first sync';
+ if(!label)return;
+ const format=time=>new Date(time).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'});
+ const sync=state.sheetSync;
+ if(sync){
+  const late=Date.now()-sync.finishedAt>8*60000;
+  label.textContent=(late?'Sync overdue. ':sync.status==='success'?'Background sync successful. ':'Sync needs attention: '+sync.error+' ')+
+   'Last run '+format(sync.finishedAt)+(sync.lastSuccessAt?' · Last successful '+format(sync.lastSuccessAt):'')+
+   ' · '+(sync.pending??Object.keys(state.sheetQueue||{}).length)+' queued writes · Runs every 5 minutes, even when the ERP is closed.';
+ }else label.textContent=sheetWriteError?'Sync needs attention: '+sheetWriteError:sheetError?'Sync needs attention: '+sheetError:state.sheetSyncedAt?
+  'Last imported '+format(state.sheetSyncedAt)+' · Waiting for first background run.':'Waiting for first background run.';
 }
 function renderIntegrations(){
  ui.innerHTML=title('Settings','Manage access, Google Sheets, and workspace exports.')+
- panel('Google Sheets',`<form id="sheet-link" class="item">${input('Google Sheet link','link',data.sheetLink,'url',true)}<p>Use Name (Expert) and Contact Number (General), or Name and Phone, on the same header row near the top. New contacts pull automatically while a Super Admin has the ERP open. Saved lead changes are queued for write-back.</p><button class="primary">${data.sheetLink?'Change connection':'Connect Sheet'}</button> ${data.sheetLink?btn('Disconnect','sheet-disconnect'):''}<p id="sheet-status" role="status"></p></form>`)+
+ panel('Google Sheets',`<form id="sheet-link" class="item">${input('Google Sheet link','link',data.sheetLink,'url',true)}<p>Use Name (Expert) and Contact Number (General), or Name and Phone, on the same header row near the top. The server imports Sheet changes and retries queued ERP updates every 5 minutes, even when nobody has the ERP open. Saved lead changes also queue for immediate write-back while using the ERP.</p><button class="primary">${data.sheetLink?'Change connection':'Connect Sheet'}</button> ${data.sheetLink?btn('Disconnect','sheet-disconnect'):''}<p id="sheet-status" role="status"></p></form>`)+
  panel('CSV and backup',`<div class="item"><div class="actions">${btn('Import Sheet CSV','import')}${btn('Export leads CSV','export')}${btn('Download ERP records','ops-backup')}</div></div>`);
  updateSyncLabel();
  $('#sheet-link').onsubmit=async event=>{

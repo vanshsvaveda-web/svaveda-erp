@@ -102,6 +102,143 @@ function sheetColumn(index) {
   return result;
 }
 
+// Runs only through the authenticated production scheduler, under the Sheet writer lock.
+async function backgroundSheetSync(env) {
+  const startedAt=Date.now();
+  let outcome={processed:0,succeeded:0,failed:0,added:0,updated:0,skipped:0,duplicates:0};
+  let error='';
+  let workspace;
+  try {
+    const row=await env.DB.prepare("SELECT workspace_id, revision, payload FROM workspace_state WHERE json_extract(payload, '$.orgKey') = 'svaveda' LIMIT 1").bind().first();
+    if(!row)return json({error:'Workspace is unavailable.'},404);
+    workspace=row.workspace_id;
+    const initial=JSON.parse(row.payload);
+    if(!initial.sheetLink)return json({status:'disconnected'});
+    if(!env.GOOGLE_SHEETS_SERVICE_ACCOUNT)throw Error('Google Sheets service account is not configured.');
+    const writeResponse=await runScheduledSheetSync(env,workspace);
+    if(!writeResponse.ok)throw Error('Sheet write processing is unavailable.');
+    outcome={...outcome,...await writeResponse.json()};
+    const rows=await readBackgroundSheet(initial.sheetLink,{...env,sheetDeadline:startedAt+85000});
+    // Lock only while merging. Read the latest state so browser edits during the Google read survive.
+    const latest=await env.DB.prepare('SELECT workspace_id, revision, payload FROM workspace_state WHERE workspace_id = ? FOR UPDATE').bind(workspace).first();
+    const state=JSON.parse(latest.payload);
+    if(state.sheetLink!==initial.sheetLink)throw Error('The Sheet connection changed during sync. Retrying on the next run.');
+    Object.assign(outcome,mergeBackgroundSheet(state,rows));
+    const queue=Object.values(state.sheetQueue||{});
+    if(outcome.failed||queue.some(job=>job.error))error='Some ERP changes are waiting to retry: '+(queue.find(job=>job.error)?.error||'Sheet write failed.');
+    if(outcome.duplicates)error+=(error?' ':'')+outcome.duplicates+' duplicate phone numbers in the Sheet were skipped for review.';
+    const finishedAt=Date.now();
+    state.sheetSyncedAt=finishedAt;
+    state.sheetSync={...state.sheetSync,startedAt,finishedAt,status:error?'attention':'success',error,...outcome,
+      pending:queue.length,nextRunAt:finishedAt+300000,lastSuccessAt:error?state.sheetSync?.lastSuccessAt:finishedAt};
+    if(new TextEncoder().encode(JSON.stringify(state)).length>maxPayloadBytes)throw Error('Workspace storage limit reached. Sheet import was not saved.');
+    await env.DB.prepare('UPDATE workspace_state SET revision = revision + 1, payload = ?, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = ? AND revision = ?')
+      .bind(JSON.stringify(state),workspace,latest.revision).run();
+    return json({status:state.sheetSync.status,...outcome,pending:queue.length});
+  }catch(problem){
+    error=problem instanceof SyntaxError?'Google Sheets returned an unreadable response.':String(problem.message||'Background sync failed.').slice(0,350);
+    if(workspace){
+      const row=await env.DB.prepare('SELECT workspace_id, revision, payload FROM workspace_state WHERE workspace_id = ? FOR UPDATE').bind(workspace).first();
+      const state=JSON.parse(row.payload);
+      state.sheetSync={...state.sheetSync,startedAt,finishedAt:Date.now(),status:'error',error,...outcome,nextRunAt:Date.now()+300000};
+      await env.DB.prepare('UPDATE workspace_state SET revision = revision + 1, payload = ?, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = ? AND revision = ?')
+        .bind(JSON.stringify(state),workspace,row.revision).run();
+    }
+    return json({status:'error',error,...outcome},502);
+  }
+}
+
+async function readBackgroundSheet(link,env){
+  const {file,gid}=parseSheetLink(link),token=await sheetToken(env);
+  const base='https://sheets.googleapis.com/v4/spreadsheets/'+file;
+  const read=async path=>{
+    const response=await fetch(base+path,{headers:{Authorization:'Bearer '+token},signal:sheetTimeout(env)});
+    if(!response.ok)throw Error('Google Sheets read failed ('+response.status+'). Check service account access to the connected tab.');
+    return JSON.parse(await boundedText(response));
+  };
+  const metadata=await read('?fields=sheets(properties(sheetId,title,index,gridProperties(rowCount)))');
+  const tabs=(metadata.sheets||[]).map(tab=>tab.properties).sort((a,b)=>a.index-b.index);
+  const tab=gid===null?tabs[0]:tabs.find(item=>String(item.sheetId)===gid);
+  if(!tab)throw Error('The connected Sheet tab is unavailable.');
+  const rows=[],title="'"+tab.title.replace(/'/g,"''")+"'";
+  for(let first=1;first<=tab.gridProperties.rowCount;first+=250){
+    const last=Math.min(first+249,tab.gridProperties.rowCount);
+    const batch=(await read('/values/'+encodeURIComponent(title+'!A'+first+':AZ'+last))).values||[];
+    for(let index=0;index<=last-first;index++)rows.push(batch[index]||[]);
+  }
+  return rows;
+}
+
+function mergeBackgroundSheet(state,rows){
+  const index=rows.slice(0,35).findIndex(row=>{
+    const keys=row.map(sheetHeaderKey);
+    return sheetWriteFields.name.some(key=>keys.includes(key))&&sheetWriteFields.phone.some(key=>keys.includes(key));
+  });
+  if(index<0)throw Error('Name and Phone headers were not found in the first 35 rows of the connected tab.');
+  const headers=rows[index].map(value=>String(value).trim()),keys=headers.map(sheetHeaderKey);
+  const columns=Object.fromEntries(Object.entries(sheetWriteFields).map(([field,aliases])=>[field,aliases.map(alias=>keys.indexOf(alias)).find(i=>i>=0)??-1]));
+  const people=[...(state.people||[]),...(state.seats||[]).filter(person=>person.email),{name:'Vansh'}];
+  const matches=new Map(),counts=new Map();
+  for(const lead of state.leads)for(const phone of new Set([sheetPhone(lead.phone),sheetPhone(lead.sheetSnapshot?.phone)])){
+    if(phone)matches.set(phone,[...(matches.get(phone)||[]),lead]);
+  }
+  for(const row of rows.slice(index+1)){const phone=sheetPhone(row[columns.phone]);if(phone)counts.set(phone,(counts.get(phone)||0)+1);}
+  const result={added:0,updated:0,skipped:0,duplicates:[...counts].filter(([,count])=>count>1).length};
+  const date=value=>{
+    const match=value.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+    const text=match?match[3]+'-'+match[2].padStart(2,'0')+'-'+match[1].padStart(2,'0'):value;
+    return validDate(text)?text:'';
+  };
+  for(const row of rows.slice(index+1)){
+    const fields=Object.fromEntries(Object.entries(columns).map(([field,column])=>[field,String(row[column]??'').trim()]));
+    if(!fields.name&&!fields.phone)continue;
+    const phone=sheetPhone(fields.phone),found=matches.get(phone)||[];
+    if(!fields.name||!phone||counts.get(phone)>1||found.length>1){result.skipped++;continue;}
+    const existing=found[0];
+    if(existing&&state.sheetQueue?.[existing.id]){result.skipped++;continue;}
+    const owner=fields.owner;
+    setAssignees(fields,owner.split(/[,;\n]+/).flatMap(name=>{
+      const person=people.find(item=>item.name.toLowerCase()===name.trim().toLowerCase());
+      return person?[person.name]:[];
+    }));
+    fields.status=['pipelinestatus','leadstatus','communicationstage','registrationstatus','status']
+      .map(key=>[...leadOutcomes].find(status=>sheetHeaderKey(status)===sheetHeaderKey(row[keys.indexOf(key)]||''))).find(Boolean)||'New';
+    fields.due=date(fields.due);
+    if(!fields.action&&fields.owner)fields.action='Initial call';
+    if(!fields.due&&fields.owner)fields.due=todayIST();
+    const sheetFields=headers.slice(0,64).flatMap((header,i)=>{
+      const value=String(row[i]??'').trim();return header&&value?[[header.slice(0,100),value.slice(0,3000)]]:[];
+    });
+    let lead=existing,changed=false;
+    if(existing){
+      const previous=existing.sheetSnapshot;
+      if(previous&&columns.owner>=0&&assigneeLabel(existing)===assigneeLabel(previous)&&assigneeLabel(existing)!==assigneeLabel(fields)){
+        setAssignees(existing,fields.owners);changed=true;
+      }
+      for(const [key,value] of Object.entries(fields)){
+        if(key==='owner'||key==='owners')continue;
+        if(previous&&columns[key]>=0&&existing[key]===previous[key]&&value!==existing[key]){existing[key]=value;changed=true;}
+      }
+      if(changed)result.updated++;
+    }else{
+      lead={id:crypto.randomUUID(),source:'Google Sheets',priority:'Medium',...fields};
+      state.leads.unshift(lead);matches.set(phone,[lead]);result.added++;changed=true;
+    }
+    lead.sheetSnapshot={...fields,owner};lead.sheetFields=sheetFields;
+    if(changed){
+      const active=state.tasks.filter(task=>task.lead===lead.id&&task.status!=='Done');
+      if(!lead.owner||!lead.action||terminalLeadStatuses.has(lead.status)){
+        for(const task of active){task.status='Done';task.completedAt=Date.now();task.completedBy='Google Sheets sync';}
+      }else{
+        const task={title:lead.action+' · '+lead.name,owner:lead.owner,owners:assignees(lead),due:lead.due,priority:lead.priority||'Medium',note:lead.instructions||'',lead:lead.id};
+        if(active.length)Object.assign(active[0],task);else state.tasks.unshift({id:crypto.randomUUID(),status:'To do',assignedAt:Date.now(),...task});
+      }
+    }
+  }
+  groupExpertOnboardingTasks(state);
+  return result;
+}
+
 async function runScheduledSheetSync(env,workspace){
   if(!env.GOOGLE_SHEETS_SERVICE_ACCOUNT)
     return json({error:'Google Sheets write-back needs a configured service account.'},503);

@@ -424,7 +424,7 @@ document.addEventListener('click',async ev=>{
  if(act==='notifications-read'){markNotifications(activityAlerts(data).map(item=>item.id));render();return;}
  if(act==='desktop-enable'){void enableDesktopNotifications();return;}
  if(act==='sheet-disconnect'&&isSuperAdmin()){
-  form('Disconnect Google Sheet','<p>Stop automatic pulls from this Sheet. Imported leads stay in the workspace.</p>','Disconnect',()=>{delete data.sheetLink;delete data.sheetSyncedAt;sheetError=''});
+  form('Disconnect Google Sheet','<p>Stop automatic pulls from this Sheet. Imported leads stay in the workspace.</p>','Disconnect',()=>{delete data.sheetLink;delete data.sheetSyncedAt;delete data.sheetSync;sheetError=''});
   return;
  }
  if(act==='desktop-inbox'){if(modal.open)modal.close();page='Inbox';render();return}
@@ -778,6 +778,7 @@ async function refreshAlerts(baseline=false){
   if(!result.data||result.role!==role||result.name!==currentName)return;
   const beforeMessages=messageAlerts.map(item=>item.id).join('|');
   await refreshMessageAlerts();
+  if(page==='Integrations')updateSyncLabel(result.data);
   const entries=activityAlerts(result.data);
   const key='svaveda-desktop-v1-'+currentName;
   const previous=JSON.parse(localStorage.getItem(key)||'null');

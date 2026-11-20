@@ -13,16 +13,11 @@
   ],
   "functions": {
     "api/erp.js": {
-      "includeFiles": "dist/server/**"
+      "includeFiles": "dist/server/**",
+      "maxDuration": 120
     }
   },
   "outputDirectory": "dist/public",
-  "crons": [
-    {
-      "path": "/api/sheets/cron",
-      "schedule": "15 2 * * *"
-    }
-  ],
   "regions": [
     "bom1"
   ],

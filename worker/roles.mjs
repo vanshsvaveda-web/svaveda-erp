@@ -43,7 +43,7 @@ function validateSeats(seats, adminEmail, existingSeats) {
 function scopedState(access) {
   if (!access.state) return access.state;
   if (access.role === 'Super Admin') return {...access.state,seats:access.seats};
-  const {seats,orgKey,attendanceByUser,messages,sheetLink,sheetSyncedAt,sheetQueue,...visible} = access.state;
+  const {seats,orgKey,attendanceByUser,messages,sheetLink,sheetSyncedAt,sheetQueue,sheetSync,...visible} = access.state;
   visible.messages = [];
   visible.attendance = attendanceByUser?.[access.user] || {};
   if (access.role === 'Founder') {
