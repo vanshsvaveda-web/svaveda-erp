@@ -13,7 +13,7 @@ assert.equal(context.merge(state,[headers,row]).added,1);
 assert.equal(state.tasks.length,1);assert.equal(state.projects[0].name,'Expert Onboarding');
 assert.equal(state.leads[0].sheetPipeline,'Hot');assert.equal(state.leads[0].sheetInterest,'Yes');
 const leadId=state.leads[0].id;
-assert.equal(context.merge(state,[headers,row]).added,0);assert.equal(state.tasks.length,1);assert.equal(state.leads[0].id,leadId);
+const repeated=context.merge(state,[headers,row]);assert.equal(repeated.added,0);assert.equal(repeated.updated,0);assert.equal(state.tasks.length,1);assert.equal(state.leads[0].id,leadId);
 let changed=[...row];changed[7]='Updated note';
 assert.equal(context.merge(state,[headers,changed]).updated,1);assert.equal(state.leads[0].note,'Updated note');
 state.leads[0].note='Unsynced ERP edit';state.sheetQueue[leadId]={fields:['note'],nextAt:0,attempts:0};

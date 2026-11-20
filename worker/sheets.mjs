@@ -130,7 +130,7 @@ async function backgroundSheetSync(env) {
     const finishedAt=Date.now();
     state.sheetSyncedAt=finishedAt;
     state.sheetSync={...state.sheetSync,startedAt,finishedAt,status:error?'attention':'success',error,...outcome,
-      pending:queue.length,nextRunAt:finishedAt+300000,lastSuccessAt:error?state.sheetSync?.lastSuccessAt:finishedAt};
+      pending:queue.length,nextRunAt:(Math.floor(finishedAt/300000)+1)*300000,lastSuccessAt:error?state.sheetSync?.lastSuccessAt:finishedAt};
     if(new TextEncoder().encode(JSON.stringify(state)).length>maxPayloadBytes)throw Error('Workspace storage limit reached. Sheet import was not saved.');
     await env.DB.prepare('UPDATE workspace_state SET revision = revision + 1, payload = ?, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = ? AND revision = ?')
       .bind(JSON.stringify(state),workspace,latest.revision).run();
@@ -140,7 +140,7 @@ async function backgroundSheetSync(env) {
     if(workspace){
       const row=await env.DB.prepare('SELECT workspace_id, revision, payload FROM workspace_state WHERE workspace_id = ? FOR UPDATE').bind(workspace).first();
       const state=JSON.parse(row.payload);
-      state.sheetSync={...state.sheetSync,startedAt,finishedAt:Date.now(),status:'error',error,...outcome,nextRunAt:Date.now()+300000};
+      state.sheetSync={...state.sheetSync,startedAt,finishedAt:Date.now(),status:'error',error,...outcome,nextRunAt:(Math.floor(Date.now()/300000)+1)*300000};
       await env.DB.prepare('UPDATE workspace_state SET revision = revision + 1, payload = ?, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = ? AND revision = ?')
         .bind(JSON.stringify(state),workspace,row.revision).run();
     }
@@ -216,7 +216,7 @@ function mergeBackgroundSheet(state,rows){
         setAssignees(existing,fields.owners);changed=true;
       }
       for(const [key,value] of Object.entries(fields)){
-        if(key==='owner'||key==='owners')continue;
+        if(key==='owner'||key==='owners'||existing[key]===undefined&&value==='')continue;
         if(previous&&columns[key]>=0&&existing[key]===previous[key]&&value!==existing[key]){existing[key]=value;changed=true;}
       }
       if(changed)result.updated++;
