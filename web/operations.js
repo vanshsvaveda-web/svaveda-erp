@@ -99,10 +99,14 @@ function renderProjects(){
  const project=data.projects.find(item=>item.id===projectSelection);
  if(!project){
   ui.innerHTML=title('Projects','Project owners, members, milestones and work.',isEmployee()?'':btn('＋ New project','project','',true))+
-  panel('Projects',data.projects.filter(project=>!isOnboardingProject(project)).map(item=>{
-   const linked=data.tasks.filter(task=>task.projectId===item.id);
-   return listItem(item.name,[item.owner,item.due,linked.length+' tasks'].filter(Boolean).join(' · '),btn('Open','ops-project',item.id));
-  }).join('')||empty('No projects yet.'));
+  '<div class="project-card-grid">'+(data.projects.filter(project=>!isOnboardingProject(project)).map(item=>{
+   const linked=data.tasks.filter(task=>task.projectId===item.id),done=linked.filter(task=>task.status==='Done').length;
+   const overdue=linked.filter(task=>task.status!=='Done'&&task.due&&task.due<day()).length;
+   const percent=linked.length?Math.round(done/linked.length*100):0;
+   const nextDue=item.due||linked.filter(task=>task.status!=='Done'&&task.due).map(task=>task.due).sort()[0];
+   const members=[...new Set([item.owner,...(item.members||[])].filter(Boolean))];
+   return `<button class="project-card" data-act="ops-project" data-key="${e(item.id)}" aria-label="Open project ${e(item.name)}"><span class="project-card-top"><span class="project-card-symbol">${workspaceIcon('tasks')}</span>${overdue?'<span class="pill amber">'+overdue+' overdue</span>':'<span class="pill good">'+(percent===100?'Complete':'Active')+'</span>'}</span><strong>${e(item.name)}</strong><span class="project-card-owner">${e(item.owner||'Unassigned')} · ${linked.length} tasks</span><span class="project-card-progress"><span>Progress</span><strong>${percent}%</strong></span><progress max="100" value="${percent}" aria-label="${e(item.name)} progress"></progress><span class="project-card-bottom"><span>${nextDue?'Due '+e(calLabel(nextDue,{day:'numeric',month:'short'})):'No target date'}</span><span class="task-owners">${members.slice(0,3).map(name=>'<span title="'+e(name)+'">'+e(name.split(/\s+/).slice(0,2).map(part=>part[0]).join(''))+'</span>').join('')}</span></span></button>`;
+  }).join('')||empty('No projects yet.'))+'</div>';
   return;
  }
  const tasks=data.tasks.filter(item=>item.projectId===project.id);
