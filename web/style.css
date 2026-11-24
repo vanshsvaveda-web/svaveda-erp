@@ -148,3 +148,8 @@ header{background:#fffdf9;height:60px}section{padding-block:24px}
 .work-project-group { border-bottom:1px solid #e8ded5; }
 .work-project-group summary { padding:.85rem 1rem; cursor:pointer; }
 .work-project-group summary span { margin-left:.75rem; color:inherit; opacity:.75; }
+
+/* Task essentials stay visible; planning and reporting are optional. */
+.popup-actions{flex-wrap:wrap}.popup-actions .task-complete-action{background:var(--accent);color:white;border-color:var(--accent)}
+.task-summary{font-size:13px;color:var(--muted);white-space:pre-wrap}
+.task-options-grid>.template-field,.task-options-grid>.task-options{grid-column:1/-1}

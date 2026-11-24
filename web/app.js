@@ -122,6 +122,7 @@ function form(title,fields,submit,handler,size='regular'){
   try{
    const values=new FormData(event.currentTarget);
    const fields=Object.fromEntries(values);
+   if(event.submitter?.dataset.taskStatus)fields.status=event.submitter.dataset.taskStatus;
    if(event.currentTarget.querySelector('.assignee-picker')) fields.owners=values.getAll('owners');
    const command=await handler(fields);
    await save(command);
@@ -134,6 +135,14 @@ function form(title,fields,submit,handler,size='regular'){
  };
  modal.showModal();
  modal.querySelector('.popup-fields input:not([type=file]),.popup-fields select,.popup-fields textarea')?.focus();
+}
+function taskFooterAction(label,status,primary=false){
+ const button=document.createElement('button');
+ button.type='submit';button.textContent=label;
+ if(status)button.dataset.taskStatus=status;
+ if(primary)button.className='task-complete-action';
+ modal.querySelector('.popup-actions').append(button);
+ return button;
 }
 modal.addEventListener('cancel',event=>{if(busy)event.preventDefault()});
 const duration=ms=>Math.floor(ms/3600000)+'h '+Math.floor(ms/60000)%60+'m';
@@ -176,7 +185,7 @@ function renderPersonal(){
 function dayTaskRow(task){
  const running=Boolean(task.timer);
  const canStart=['To do','In progress','Rework'].includes(task.status);
- return `<div class="item task-line"><div><button class="link task-name" data-act="task" data-key="${e(task.id)}">${e(task.title)}</button><small>${e([task.due?'Due '+task.due:'No due date',task.priority].filter(Boolean).join(' · '))}</small></div><div class="actions">${pill(task.status)}${canStart?btn(running?'Pause':task.status==='In progress'?'Resume':'Start','day-task-timer',task.id):''}</div></div>`;
+ return `<div class="item task-line"><div><button class="link task-name" data-act="task" data-key="${e(task.id)}">${e(task.title)}</button><small>${e([task.due?'Due '+task.due:'No due date',task.priority].filter(Boolean).join(' · '))}</small></div><div class="actions">${pill(task.status)}${canStart?btn(running?'Pause':task.status==='In progress'?'Resume':'Start','day-task-timer',task.id):''}${canStart?btn(isEmployee()?'Submit work':'Finish','task',task.id):''}</div></div>`;
 }
 function dayAgenda(){
  const today=day();
@@ -523,7 +532,15 @@ document.addEventListener('click',async ev=>{
  if(researchLead){openLeadResearch(researchLead);return;}
  if(isEmployee()){
   if(t.status==='Done'){readRecord(e(t.title),'<p>Completed</p><p>'+e(t.note)+'</p>'+taskResultsDetails(t)+download(t.file)+download(t.submission));return}
-  form(e(t.title),'<p>'+e([t.due,t.priority,t.note].filter(Boolean).join(' · '))+'</p>'+taskResultsDetails(t)+download(t.file)+select('Status','status',options(['To do','In progress','Blocked','In review'],t.status==='Rework'?'In progress':t.status))+select('Timer','timerAction',options(['Keep current',t.timer?'Pause':'Start'],'Keep current'))+'<p>Tracked '+duration((t.elapsed||0)+(t.timer?Math.max(0,Date.now()-t.timer):0))+'</p>'+taskChecklist(t)+taskResultFields(t)+area('Work submission or comment','comment')+input('Submission attachment','submission','','file')+(t.submission?download(t.submission):'')+(t.comments||[]).map(c=>'<p>'+e(c)+'</p>').join(''),'Update task',async value=>{
+  const summary='<p class="task-summary">'+e([t.due?'Due '+t.due:'No due date',t.priority,t.note].filter(Boolean).join(' · '))+'</p>';
+  const extra=select('Status','status',options(['To do','In progress','Blocked','In review'],t.status==='Rework'?'In progress':t.status))+
+   select('Timer','timerAction',options(['Keep current',t.timer?'Pause':'Start'],'Keep current'))+
+   '<p>Tracked '+duration((t.elapsed||0)+(t.timer?Math.max(0,Date.now()-t.timer):0))+'</p>'+
+   taskResultFields(t)+taskResultsDetails(t)+download(t.file)+input('Attachment (optional)','submission','','file')+
+   (t.submission?download(t.submission):'')+(t.comments||[]).map(c=>'<p>'+e(c)+'</p>').join('');
+  form(e(t.title),summary+taskChecklist(t)+area('Update or completion note (optional)','comment')+
+   '<details class="task-options"><summary>More details</summary><div class="task-options-grid">'+extra+'</div></details>',
+   t.status==='In review'?'Update submission':'Submit work',async value=>{
    t.checklist=(t.checklist||[]).map((item,i)=>({...item,done:value['step'+i]==='on'}));
    const file=await attach(value.submission);if(file)t.submission=file;
    if(value.timerAction==='Start'&&value.status!=='In review')t.timer=Date.now();
@@ -532,20 +549,19 @@ document.addEventListener('click',async ev=>{
    for(const field of taskResultKeys)t[field]=value[field];
    if(value.comment.trim())(t.comments||=[]).push(value.comment.trim());
   });
+  const primarySubmit=modal.querySelector('.popup-actions .primary');
+  primarySubmit.dataset.taskStatus='In review';
   if(t.status!=='In review'){
-   const submit=document.createElement('button');
-   submit.type='button';submit.textContent='Submit for review';
-   const taskForm=modal.querySelector('form');
-   submit.onclick=()=>{taskForm.elements.status.value='In review';taskForm.requestSubmit()};
-   modal.querySelector('.popup-actions').prepend(submit);
+   const progress=taskFooterAction('Save progress');
+   primarySubmit.before(progress);
   }
   return;
  }
  const tracked=(t.elapsed||0)+(t.timer?Date.now()-t.timer:0);
- const details=select('Repeat after completion','repeat',options(['None','Daily','Weekly','Monthly'],t.repeat||'None'))+area('Checklist (one step per line)','checklistText',(t.checklist||[]).map(item=>item.text).join('\n'))+select('Priority','priority',options(['Low','Medium','High','Urgent'],t.priority))+select('Status','status',options(taskStatuses,t.status))+taskAmount('Estimated hours','hours',t.hours)+taskPlanFields(t)+taskResultFields(t)+taskResultsDetails(t)+area('Comment','comment')+(t.comments||[]).map(c=>'<p>'+e(c)+'</p>').join('')+input('Attachment','attachment','','file')+download(t.file);
- const fields=(!key?templateField():'')+input('Title','title',t.title,'text',true)+assigneePicker(t)+projectField(t.projectId)+input('Start date','start',t.start,'date')+input('Due date','due',t.due,'date')+area('Instructions','note',t.note);
+ const details=projectField(t.projectId)+input('Start date','start',t.start,'date')+area('Instructions (optional)','note',t.note)+select('Repeat after completion','repeat',options(['None','Daily','Weekly','Monthly'],t.repeat||'None'))+area('Checklist (one step per line)','checklistText',(t.checklist||[]).map(item=>item.text).join('\n'))+select('Priority','priority',options(['Low','Medium','High','Urgent'],t.priority))+select('Status','status',options(taskStatuses,t.status))+taskAmount('Estimated hours','hours',t.hours)+taskPlanFields(t)+taskResultFields(t)+taskResultsDetails(t)+area('Comment','comment')+(t.comments||[]).map(c=>'<p>'+e(c)+'</p>').join('')+input('Attachment','attachment','','file')+download(t.file);
+ const fields=input('Title','title',t.title,'text',true)+assigneePicker(t)+input('Due date','due',t.due,'date');
  const tracker=key?`<p>Tracked ${duration(tracked)} · ${t.timer?'Running':'Paused'}</p>${select('Timer','timerAction',options(['Keep current',t.timer?'Pause':'Start'],'Keep current'))}`:'';
- form(key?'Task details':'New task',fields+`<details class="task-options" open><summary>Planning, results and attachments</summary><div class="task-options-grid">${details}${tracker}</div></details>`,'Save task',async v=>{
+ form(key?'Task details':'New task',fields+`<details class="task-options"><summary>More details</summary><div class="task-options-grid">${!key?templateField():''}${details}${tracker}</div></details>`,'Save task',async v=>{
  if(v.repeat!=='None'&&!v.due)throw Error('Set a due date for the recurring task.');
  if(v.start&&v.due&&v.start>v.due)throw Error('The due date must be after the start date.');
  const f=await attach(v.attachment);if(f)t.file=f;
@@ -554,6 +570,7 @@ document.addEventListener('click',async ev=>{
  t.checklist=v.checklistText.split('\n').map(text=>text.trim()).filter(Boolean).slice(0,30).map(text=>({text:text.slice(0,250),done:(t.checklist||[]).find(item=>item.text===text)?.done||false}));
  delete v.checklistText;delete v.attachment;delete v.timerAction;delete v.comment;Object.assign(t,v);setAssignees(t,v.owners);if(!key)data.tasks.unshift(t);notify('Task saved');
  });
+ if(key&&t.status!=='Done')taskFooterAction('Mark complete','Done',true);
  const taskForm=modal.querySelector('form');
  const estimate=taskForm.elements.hours, points=taskForm.querySelector('#task-points');
  const updatePoints=()=>{const value=taskPoints({hours:estimate.value});points.textContent=value?value+' points':'Enter estimated hours to calculate points';};
