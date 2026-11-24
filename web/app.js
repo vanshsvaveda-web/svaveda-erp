@@ -161,7 +161,8 @@ function renderPersonal(){
  const overdue=active.filter(task=>task.due&&task.due<today);
  const current=active.filter(task=>!overdue.includes(task)&&(task.status==='Rework'||!task.due||task.due===today));
  const upcoming=active.filter(task=>task.due>today&&task.status!=='Rework').sort((a,b)=>a.due.localeCompare(b.due));
- const queues={Today:current,Overdue:overdue,Upcoming:upcoming,Review:mine.filter(task=>task.status==='In review')};
+ const completed=mine.filter(task=>task.status==='Done').sort((a,b)=>(Number(b.completedAt)||0)-(Number(a.completedAt)||0));
+ const queues={Today:current,Overdue:overdue,Upcoming:upcoming,Review:mine.filter(task=>task.status==='In review'),Completed:completed};
  dayTaskQueue||=current.length?'Today':overdue.length?'Overdue':'Today';
  const visible=queues[dayTaskQueue];
  const operations=visible.filter(task=>taskSection(task)==='Operations'), leadTasks=visible.filter(task=>taskSection(task)==='Sales'), marketing=visible.filter(task=>taskSection(task)==='Marketing');
@@ -185,7 +186,8 @@ function renderPersonal(){
 function dayTaskRow(task){
  const running=Boolean(task.timer);
  const canStart=['To do','In progress','Rework'].includes(task.status);
- return `<div class="item task-line"><div><button class="link task-name" data-act="task" data-key="${e(task.id)}">${e(task.title)}</button><small>${e([task.due?'Due '+task.due:'No due date',task.priority].filter(Boolean).join(' · '))}</small></div><div class="actions">${pill(task.status)}${canStart?btn(running?'Pause':task.status==='In progress'?'Resume':'Start','day-task-timer',task.id):''}${canStart?btn(isEmployee()?'Submit work':'Finish','task',task.id):''}</div></div>`;
+ const detail=task.status==='Done'?[task.completedAt?'Completed '+calendarStamp(task.completedAt):'Completed',task.completedBy?'by '+task.completedBy:'']:[task.due?'Due '+task.due:'No due date',task.priority];
+ return `<div class="item task-line"><div><button class="link task-name" data-act="task" data-key="${e(task.id)}">${e(task.title)}</button><small>${e(detail.filter(Boolean).join(' · '))}</small></div><div class="actions">${pill(task.status)}${canStart?btn(running?'Pause':task.status==='In progress'?'Resume':'Start','day-task-timer',task.id):''}${canStart?btn(isEmployee()?'Submit work':'Finish','task',task.id):''}</div></div>`;
 }
 function dayAgenda(){
  const today=day();
