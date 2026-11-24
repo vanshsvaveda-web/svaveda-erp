@@ -531,51 +531,40 @@ document.addEventListener('click',async ev=>{
  const researchLead=t.status!=='Done'&&t.lead&&data.leads.find(lead=>lead.id===t.lead&&lead.researchReturnTo&&assignedTo(lead,currentName));
  if(researchLead){openLeadResearch(researchLead);return;}
  if(isEmployee()){
-  if(t.status==='Done'){readRecord(e(t.title),'<p>Completed</p><p>'+e(t.note)+'</p>'+taskResultsDetails(t)+download(t.file)+download(t.submission));return}
-  const summary='<p class="task-summary">'+e([t.due?'Due '+t.due:'No due date',t.priority,t.note].filter(Boolean).join(' · '))+'</p>';
-  const extra=select('Status','status',options(['To do','In progress','Blocked','In review'],t.status==='Rework'?'In progress':t.status))+
-   select('Timer','timerAction',options(['Keep current',t.timer?'Pause':'Start'],'Keep current'))+
-   '<p>Tracked '+duration((t.elapsed||0)+(t.timer?Math.max(0,Date.now()-t.timer):0))+'</p>'+
-   taskResultFields(t)+taskResultsDetails(t)+download(t.file)+input('Attachment (optional)','submission','','file')+
-   (t.submission?download(t.submission):'')+(t.comments||[]).map(c=>'<p>'+e(c)+'</p>').join('');
-  form(e(t.title),summary+taskChecklist(t)+area('Update or completion note (optional)','comment')+
-   '<details class="task-options"><summary>More details</summary><div class="task-options-grid">'+extra+'</div></details>',
+  if(t.status==='Done'){readRecord(e(t.title),'<p>Completed</p><p>'+e(t.note)+'</p>'+download(t.file)+download(t.submission));return}
+  const summary='<p class="task-summary">'+e([t.due?'Due '+t.due:'No due date',t.status].join(' · '))+'</p>'+
+   (t.note?'<p class="task-summary">'+e(t.note)+'</p>':'')+download(t.file);
+  form(e(t.title),summary+taskChecklist(t)+area('Note (optional)','comment')+
+   '<details class="task-options"><summary>Attach file (optional)</summary><div class="task-options-grid">'+
+   input('File','submission','','file')+download(t.submission)+'</div></details>'+
+   '<input type="hidden" name="status" value="'+e(t.status==='Rework'?'In progress':t.status)+'">',
    t.status==='In review'?'Update submission':'Submit work',async value=>{
    t.checklist=(t.checklist||[]).map((item,i)=>({...item,done:value['step'+i]==='on'}));
    const file=await attach(value.submission);if(file)t.submission=file;
-   if(value.timerAction==='Start'&&value.status!=='In review')t.timer=Date.now();
-   if((value.timerAction==='Pause'||value.status==='In review')&&t.timer){t.elapsed=(t.elapsed||0)+Math.max(0,Date.now()-t.timer);delete t.timer}
+   if(value.status==='In review'&&t.timer){t.elapsed=(t.elapsed||0)+Math.max(0,Date.now()-t.timer);delete t.timer}
    t.status=value.status;
-   for(const field of taskResultKeys)t[field]=value[field];
    if(value.comment.trim())(t.comments||=[]).push(value.comment.trim());
-  });
+  },'compact');
   const primarySubmit=modal.querySelector('.popup-actions .primary');
   primarySubmit.dataset.taskStatus='In review';
-  if(t.status!=='In review'){
-   const progress=taskFooterAction('Save progress');
-   primarySubmit.before(progress);
-  }
+  if(t.status!=='In review')primarySubmit.before(taskFooterAction('Save progress'));
   return;
  }
- const tracked=(t.elapsed||0)+(t.timer?Date.now()-t.timer:0);
- const details=projectField(t.projectId)+input('Start date','start',t.start,'date')+area('Instructions (optional)','note',t.note)+select('Repeat after completion','repeat',options(['None','Daily','Weekly','Monthly'],t.repeat||'None'))+area('Checklist (one step per line)','checklistText',(t.checklist||[]).map(item=>item.text).join('\n'))+select('Priority','priority',options(['Low','Medium','High','Urgent'],t.priority))+select('Status','status',options(taskStatuses,t.status))+taskAmount('Estimated hours','hours',t.hours)+taskPlanFields(t)+taskResultFields(t)+taskResultsDetails(t)+area('Comment','comment')+(t.comments||[]).map(c=>'<p>'+e(c)+'</p>').join('')+input('Attachment','attachment','','file')+download(t.file);
- const fields=input('Title','title',t.title,'text',true)+assigneePicker(t)+input('Due date','due',t.due,'date');
- const tracker=key?`<p>Tracked ${duration(tracked)} · ${t.timer?'Running':'Paused'}</p>${select('Timer','timerAction',options(['Keep current',t.timer?'Pause':'Start'],'Keep current'))}`:'';
- form(key?'Task details':'New task',fields+`<details class="task-options"><summary>More details</summary><div class="task-options-grid">${!key?templateField():''}${details}${tracker}</div></details>`,'Save task',async v=>{
- if(v.repeat!=='None'&&!v.due)throw Error('Set a due date for the recurring task.');
- if(v.start&&v.due&&v.start>v.due)throw Error('The due date must be after the start date.');
- const f=await attach(v.attachment);if(f)t.file=f;
- if(v.timerAction==='Start')t.timer=Date.now();if(v.timerAction==='Pause'||v.status==='Done'){if(t.timer)t.elapsed=(t.elapsed||0)+Date.now()-t.timer;delete t.timer}
- if(v.comment.trim())(t.comments||=[]).push(v.comment.trim());
- t.checklist=v.checklistText.split('\n').map(text=>text.trim()).filter(Boolean).slice(0,30).map(text=>({text:text.slice(0,250),done:(t.checklist||[]).find(item=>item.text===text)?.done||false}));
- delete v.checklistText;delete v.attachment;delete v.timerAction;delete v.comment;Object.assign(t,v);setAssignees(t,v.owners);if(!key)data.tasks.unshift(t);notify('Task saved');
- });
+ const fields=input('Task name','title',t.title,'text',true)+assigneePicker(t)+input('Due date','due',t.due,'date')+
+  area('Note (optional)','note',t.note)+
+  '<details class="task-options"><summary>Project and priority</summary><div class="task-options-grid">'+
+  projectField(t.projectId)+select('Priority','priority',options(['Low','Medium','High','Urgent'],t.priority))+'</div></details>'+
+  '<input type="hidden" name="status" value="'+e(t.status)+'">';
+ form(key?'Task':'New task',fields,'Save task',async v=>{
+  if(t.repeat&&t.repeat!=='None'&&!v.due)throw Error('Set a due date for the recurring task.');
+  if(v.status==='Done'&&t.timer){t.elapsed=(t.elapsed||0)+Math.max(0,Date.now()-t.timer);delete t.timer}
+  // Only edit the small set of visible fields. Existing metrics, files, recurrence,
+  // checklist, start date and tracking remain intact.
+  Object.assign(t,{title:v.title.trim(),due:v.due,note:v.note,projectId:v.projectId,priority:v.priority,status:v.status});
+  setAssignees(t,v.owners);
+  if(!key)data.tasks.unshift(t);
+ },'compact');
  if(key&&t.status!=='Done')taskFooterAction('Mark complete','Done',true);
- const taskForm=modal.querySelector('form');
- const estimate=taskForm.elements.hours, points=taskForm.querySelector('#task-points');
- const updatePoints=()=>{const value=taskPoints({hours:estimate.value});points.textContent=value?value+' points':'Enter estimated hours to calculate points';};
- estimate.addEventListener('input',updatePoints);updatePoints();
- if(!key)$('#task-template').onchange=event=>chooseTemplate(event.target.value);
  }
  if(act==='event'){openEvent(key);return}
  if(act==='project'){openProject(key);return}
