@@ -285,10 +285,10 @@ function renderPipeline(){
   ['Registered',['Registered']],['Verified',['Verified']],['Program listed',['Program listed','Onboarded']],
   ['Closed',['Not interested','Invalid number','Do not contact']]
  ];
- ui.innerHTML=title('Expert pipeline','See each expert’s stage, owner, and next action.')+leadGenerationTabs('Pipeline')+
- `<div class="panel"><div class="project-board pipeline-board">${stages.map(([stage,statuses])=>{
+ ui.innerHTML=title('Expert pipeline','See each expert’s stage, owner, and next action.',isEmployee()?'':btn('＋ Quick capture','quick-lead','',true))+leadGenerationTabs('Pipeline')+
+ `<div class="panel pipeline-panel"><div class="project-board pipeline-board">${stages.map(([stage,statuses])=>{
   const leads=data.leads.filter(lead=>statuses.includes(lead.status));
-  return `<article><div class="board-heading"><strong>${stage}</strong><span class="tab-count">${leads.length}</span></div>${leads.map(lead=>`<div class="pipeline-record"><button class="link" data-act="lead" data-key="${e(lead.id)}">${e(lead.name)}</button><small>${e(assigneeLabel(lead)||'Unassigned')}</small>${pill(lead.status)}<p>${e(lead.action||'No next action')}${lead.due?' · '+e(lead.due):''}</p>${stage==='Closed'||lead.status==='Onboarded'?'':btn('Follow up','outcome',lead.id)}</div>`).join('')||empty('No leads')}</article>`;
+  return `<article class="pipeline-column"><div class="pipeline-stage-heading"><h2>${stage}</h2><span class="tab-count">${leads.length}</span></div><div class="pipeline-stage-leads" role="region" aria-label="${stage} leads" tabindex="0">${leads.map(lead=>`<div class="pipeline-record"><button class="link pipeline-lead-name" data-act="lead" data-key="${e(lead.id)}">${e(lead.name)}</button>${lead.action||lead.due?'<p class="pipeline-next">'+e([lead.action,lead.due?'Due '+calLabel(lead.due,{day:'numeric',month:'short'}):''].filter(Boolean).join(' · '))+'</p>':''}<div class="pipeline-card-bottom"><span class="pipeline-owner-status"><small title="${e(assigneeLabel(lead)||'Unassigned')}">${e(assigneeLabel(lead)||'Unassigned')}</small>${lead.status!=='New'&&lead.status!==stage?pill(lead.status):''}</span>${stage==='Closed'||lead.status==='Onboarded'?'':btn('Follow up','outcome',lead.id)}</div></div>`).join('')||empty('No leads')}</div></article>`;
  }).join('')}</div></div>`;
 }
 
