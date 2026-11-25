@@ -10,6 +10,7 @@ const fresh=()=>({
  people:[{name:'Vansh',team:'Management',role:'Administrator'}],
  leads:[],tasks:[],projects:[],events:[],attendance:{},messages:[],reviews:[]
 });
+let salesLastPage='Expert Leads';
 let personalTaskScope=false, taskView="List", expertView='List';
 let data, revision=0, committed, busy=false, role, currentName, roleSeats;
 const isEmployee=()=>role==='Employee';
@@ -103,7 +104,7 @@ const assigneeLinks=record=>assignees(record).map(ownerLink).join(', ')||'Unassi
 const btn=(label,act,key='',primary=false)=>`<button type="button" class="${primary?'primary':''}" data-act="${act}" data-key="${e(key)}">${label}</button>`;
 const pill=t=>{
  const tones={Done:'good',Onboarded:'good',Approved:'good','In progress':'blue',Contacted:'blue','In review':'violet','Follow-up':'violet',Pending:'amber',Blocked:'rose',Rework:'rose',Returned:'rose','Do not contact':'rose'};
- return `<span class="pill ${tones[t]||'neutral'}">${e(t)}</span>`;
+ return `<span class="pill ${tones[t]||'neutral'}">${e(t==='In review'?'Waiting for approval':t)}</span>`;
 };
 const empty=t=>`<div class="empty">${t}</div>`;
 const title=(name,desc,action='')=>`<div class="row"><div><h1>${name}</h1><p>${desc}</p></div><div class="actions">${action}</div></div>`;
@@ -134,7 +135,7 @@ function form(title,fields,submit,handler,size='regular'){
  modal.querySelector('form').onsubmit=async event=>{
   event.preventDefault();if(busy)return;
   const button=event.currentTarget.querySelector('.primary'), error=$('#error');
-  button.disabled=true;busy=true;error.textContent='';
+  const originalLabel=button.textContent;button.textContent='Saving…';button.disabled=true;busy=true;error.textContent='';
   try{
    const values=new FormData(event.currentTarget);
    const fields=Object.fromEntries(values);
@@ -142,12 +143,12 @@ function form(title,fields,submit,handler,size='regular'){
    if(event.currentTarget.querySelector('.assignee-picker')) fields.owners=values.getAll('owners');
    const command=await handler(fields);
    await save(command);
-   modal.close();render();notify('Saved');
+   modal.close();render();notify(Object.keys(data.sheetQueue||{}).length?'Saved · Sheet updates queued':'Saved');
   }catch(problem){
    restoreDraft(data,committed);
    error.textContent=problem.message;
    error.scrollIntoView({block:'nearest'});
-  }finally{busy=false;button.disabled=false}
+  }finally{busy=false;button.disabled=false;button.textContent=originalLabel}
  };
  modal.showModal();
  modal.querySelector('.popup-fields input:not([type=file]),.popup-fields select,.popup-fields textarea')?.focus();
@@ -178,8 +179,8 @@ function renderPersonal(){
  const current=active.filter(task=>!overdue.includes(task)&&(task.status==='Rework'||!task.due||task.due===today));
  const upcoming=active.filter(task=>task.due>today&&task.status!=='Rework').sort((a,b)=>a.due.localeCompare(b.due));
  const completed=mine.filter(task=>task.status==='Done').sort((a,b)=>(Number(b.completedAt)||0)-(Number(a.completedAt)||0));
- const queues={Today:current,Overdue:overdue,Upcoming:upcoming,Review:mine.filter(task=>task.status==='In review'),Completed:completed};
- dayTaskQueue||=current.length?'Today':overdue.length?'Overdue':'Today';
+ const queues={Overdue:overdue,Today:current,Upcoming:upcoming,Review:mine.filter(task=>task.status==='In review'),Completed:completed};
+ dayTaskQueue||=overdue.length?'Overdue':'Today';
  const visible=queues[dayTaskQueue];
  const operations=visible.filter(task=>taskSection(task)==='Operations'), leadTasks=visible.filter(task=>taskSection(task)==='Sales'), marketing=visible.filter(task=>taskSection(task)==='Marketing');
  const followUps=data.leads.filter(lead=>assignedTo(lead,currentName)&&lead.due&&lead.due<=today&&!['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status));
@@ -189,7 +190,7 @@ function renderPersonal(){
  const stats=`<div class="snapshot day-summaries">${summaries.map(([label,count,icon,tone])=>`<button class="snapshot-card day-stat" data-act="day-work-filter" data-key="${label}" aria-pressed="${dayTaskQueue===label}"><span class="snapshot-icon ${tone}">${workspaceIcon(icon)}</span><span class="snapshot-label">${label==='Review'?'Awaiting review':label==='Completed'?'Completed tasks':label==='Today'?'Today’s focus':'Overdue tasks'}</span><strong>${count}</strong><span class="stat-caption">${label==='Completed'?'Your completed work':label==='Overdue'?'Needs your attention':label==='Review'?'Submitted for approval':'Ready to work on'}</span></button>`).join('')}</div>`;
  const groups=[['Operations',operations,'tasks','personal-tasks'],['Marketing',marketing,'marketing','nav'],['Sales & lead generation',leadTasks,'sales','personal-lead-tasks']];
  const work=groups.filter(([,items])=>items.length).map(([name,items,icon,target])=>`<div class="work-section"><div class="work-section-heading"><span>${workspaceIcon(icon)}<h3>${name}</h3><small>${items.length}</small></span><button class="link" data-act="${target}" data-key="${target==='nav'?'Marketing Tasks':'Mine'}">View all</button></div>${items.map(dayTaskRow).join('')}</div>`).join('')||`<div class="work-empty">${workspaceIcon(dayTaskQueue==='Completed'?'check':'tasks')}<h3>${dayTaskQueue==='Completed'?'Your finished work will appear here':'You’re clear in this view'}</h3><p>${dayTaskQueue==='Review'?'Tasks you submit will appear here while awaiting approval.':'Choose another tab to see the rest of your work.'}</p></div>`;
- ui.innerHTML=`<div class="personal-heading"><div><div class="day-date">${e(date)} · IST</div><h1>${greeting()}, ${e(currentName)}<span class="greeting-dot">.</span></h1><p>Your work, with a little more clarity.</p></div><div class="actions">${btn(workspaceIcon('calendar')+' Calendar','personal-calendar')}${isEmployee()?btn('Request leave','ops-request','Leave'):btn('＋ New task','task','',true)}</div></div>
+ ui.innerHTML=`<div class="personal-heading"><div><div class="day-date">${e(date)} · IST</div><h1>${greeting()}, ${e(currentName)}<span class="greeting-dot">.</span></h1><p>Your work, with a little more clarity.</p></div><div class="actions">${btn(workspaceIcon('calendar')+' Calendar','personal-calendar')}${isEmployee()?btn('Request leave','ops-request','Leave'):btn('＋ Quick capture','quick-lead','',true)+btn('New task','task')}</div></div>
  ${stats}
  <div class="split home-columns day-workspace"><div>
  <article class="panel work-panel"><div class="panel-title"><div><h2>My work</h2><p>One place for everything assigned to you.</p></div><span class="workspace-count">${mine.length} tasks</span></div><div class="toolbar filter-tabs work-tabs" aria-label="My work filters">${tabs}</div>${work}</article>
@@ -230,7 +231,7 @@ function renderHome(open,unassigned,due){
   ['Awaiting review',reviewRows().length,'Review Queue','green','›']
  ];
  const date=new Intl.DateTimeFormat('en-IN',{dateStyle:'full',timeZone:'Asia/Kolkata'}).format(new Date());
- ui.innerHTML=`<div class="overview-heading"><div><div class="day-date">${e(date)}</div><h1>Workspace overview</h1></div><div class="actions">${btn('Review queue','nav','Review Queue')}${btn('＋ New task','task','',true)}</div></div>
+ ui.innerHTML=`<div class="overview-heading"><div><div class="day-date">${e(date)}</div><h1>Workspace overview</h1></div><div class="actions">${btn('Review queue','nav','Review Queue')}${btn('New task','task')}${btn('＋ Quick capture','quick-lead','',true)}</div></div>
  <div class="snapshot">${bars.map(([label,value,target,color,icon])=>`<button class="snapshot-card" data-act="home-link" data-key="${target}" data-label="${label}"><span class="snapshot-icon ${color}" aria-hidden="true">${icon}</span><span class="snapshot-label">${label}</span><strong>${value}</strong><span class="snapshot-arrow" aria-hidden="true">›</span></button>`).join('')}</div>
  <div class="split home-columns"><div>${panel('Team tasks',taskRows(tasks.slice(0,6))+`<div class="panel-foot">${btn('View tasks','nav','Tasks')}</div>`)}${panel('Expert follow-ups',followUps.slice(0,6).map(l=>listItem(l.name,l.owner||'Unassigned',btn('Follow up','outcome',l.id))).join('')||empty('No follow-ups due.'))}</div>
  <div>${notificationPanel()}${isFounder()?'':panel('Attendance',attendanceCard())}${panel('Today’s meetings',meetings.map(item=>listItem(item.title,[eventTime(item.time),item.owner].filter(Boolean).join(' · '),btn('Open','event',item.id))).join('')||empty('No meetings today.'))}</div></div>`;
@@ -257,16 +258,18 @@ function render(){
  }
 }
 function renderWorkspace(){
+ if(['Expert Leads','Pipeline','Lead Tasks'].includes(page))salesLastPage=page;
  const module=nav.find(item=>item.pages.includes(page==='Projects'&&isOnboardingProject(data.projects.find(project=>project.id===projectSelection))?'Lead Tasks':page));
  $('aside footer').innerHTML=`<span class="profile-avatar">${e(currentName.split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase())}</span><span class="profile-label"><strong>${e(currentName)}</strong><small>${e(role)}</small></span>`;
  const entries=[[isFounder()?'Overview':'My Day','home','Home'],['Tasks','tasks','Operations'],['Marketing Tasks','marketing','Marketing'],['Expert Leads','sales','Sales'],['Messages','messages','Messages'],['Attendance','team','Team'],['Integrations','settings','Settings']];
  const labels={'Expert Leads':'Sales',Tasks:'Operations','Marketing Tasks':'Marketing',Attendance:'Team',Integrations:'Settings'};
  $('nav').innerHTML=entries.filter(([name])=>name!=='Integrations'||isSuperAdmin()).map(([name,icon,group])=>{
   const active=module.name===group;
-  return `<button ${active?'class="active" aria-current="page"':''} data-act="nav" data-key="${name}"><i aria-hidden="true">${workspaceIcon(icon)}</i>${labels[name]||name}</button>`;
+  return `<button ${active?'class="active" aria-current="page"':''} data-act="nav" data-key="${group==='Sales'?salesLastPage:name}"><i aria-hidden="true">${workspaceIcon(icon)}</i>${labels[name]||name}</button>`;
  }).join('');
  const todayAttendance=data.attendance[day()]||{};
- $('#attendance-header').innerHTML=todayAttendance.out?'<span>Checked out</span>':todayAttendance.in?
+ $('#attendance-header').hidden=isFounder();
+ $('#attendance-header').innerHTML=isFounder()?'':todayAttendance.out?'<span>Checked out</span>':todayAttendance.in?
   btn('Check out','attendance','out'):btn('Check in','attendance','in',true);
  $('#subnav').hidden=true;
  $('#crumb').textContent=module.name===page?page:module.name+' / '+page;
@@ -468,7 +471,9 @@ document.addEventListener('change',ev=>{const key=ev.target.dataset.check;if(key
 document.addEventListener('click',async ev=>{
  const b=ev.target.closest('[data-act]');if(!b)return;
  if(busy)return;
- const {act,key}=b.dataset;
+ let {act,key}=b.dataset;
+ if(act==='msg-open'){const [kind,recordId]=key.split(':');if(!messageLinkedRecord(data,kind,recordId)){notify('This record is no longer available.');return}act={task:'task',project:'ops-project',lead:'lead'}[kind];key=recordId;}
+ if(b.dataset.notificationIds){markNotifications(JSON.parse(b.dataset.notificationIds));b.closest('.notification-row')?.removeAttribute('data-unread');}
  if(b.dataset.notificationId){markNotifications([b.dataset.notificationId]);b.closest('.notification-row')?.removeAttribute('data-unread');}
  if(act==='notifications-read'){markNotifications(activityAlerts(data).map(item=>item.id));render();return;}
  if(act==='desktop-enable'){void enableDesktopNotifications();return;}
@@ -509,6 +514,7 @@ document.addEventListener('click',async ev=>{
   taskFilter=b.dataset.label==='Overdue tasks'?'Overdue':'Open';
   query='';selected.clear();render();return;
  }
+ if(act==='pipeline-scope'){pipelineScope=key;renderPipeline();return}
  if(act==='expert-view'){expertView=key;page='Expert Leads';render();return}
  if(act==='lead-clear'){selected.clear();render();return}
  if(act==='lead-page'){leadPage=Math.max(1,leadPage+Number(key));render();return}
@@ -784,14 +790,25 @@ function markNotifications(ids){
  try{localStorage.setItem(notificationReadKey(),JSON.stringify([...new Set([...readNotifications(),...ids])].slice(-2000)));}catch{}
 }
 function notificationPanel(full=false){
- const read=readNotifications();
- const items=activityAlerts(data).sort((a,b)=>Number(read.has(a.id))-Number(read.has(b.id)));
- const unread=items.filter(item=>!read.has(item.id)).length;
- const rows=items.slice(0,full?100:4).map(item=>{
-  const description=[item.subject,item.at?calendarStamp(item.at):''].filter(Boolean).join(' · ');
-  return `<div class="item row notification-row" ${read.has(item.id)?'':'data-unread="true"'}><div><strong>${e(item.label)}</strong><p>${e(description)}</p></div><button type="button" data-act="${item.act}" data-key="${e(item.key)}" data-notification-id="${e(item.id)}" aria-label="Open ${e(item.label)}: ${e(item.subject)}">Open</button></div>`;
- }).join('')||empty('You’re caught up.');
- return panel('Notifications'+(unread?' · '+unread+' unread':''),rows+`<div class="panel-foot actions">${unread?btn('Mark all read','notifications-read'):''}${full?'':btn('View all','desktop-inbox')}</div>`);
+ const read=readNotifications(), grouped=new Map();
+ for(const item of activityAlerts(data)){
+  const key=item.label+'|'+item.act+'|'+item.key;
+  const existing=grouped.get(key);
+  if(existing){existing.ids.push(item.id);existing.count++;if(!read.has(item.id))existing.unread=true;}
+  else grouped.set(key,{...item,ids:[item.id],count:1,unread:!read.has(item.id)});
+ }
+ const items=[...grouped.values()].sort((a,b)=>Number(b.unread)-Number(a.unread)||b.at-a.at);
+ const needsAction=item=>/^(task-due:|lead:|assigned:|rework:|review:|review-request:)/.test(item.id);
+ const unread=items.filter(item=>item.unread).length;
+ const rows=items.slice(0,full?100:6);
+ const section=(label,predicate)=>{
+  const matches=rows.filter(predicate);if(!matches.length)return '';
+  return '<h3 class="notification-section-label">'+label+'</h3>'+matches.map(item=>{
+   const description=[item.subject,item.at?calendarStamp(item.at):''].filter(Boolean).join(' · ');
+   return `<div class="item row notification-row" ${item.unread?'data-unread="true"':''}><div><strong>${e(item.label)}${item.count>1?' · '+item.count:''}</strong><p>${e(description)}</p></div><button type="button" data-act="${item.act}" data-key="${e(item.key)}" data-notification-ids="${e(JSON.stringify(item.ids))}" aria-label="Open ${e(item.label)}: ${e(item.subject)}">Open</button></div>`;
+  }).join('');
+ };
+ return panel('Notifications'+(unread?' · '+unread+' unread':''),(section('Needs action',needsAction)+section('Updates',item=>!needsAction(item))||empty('You’re caught up.'))+`<div class="panel-foot actions">${unread?btn('Mark all read','notifications-read'):''}${full?'':btn('View all','desktop-inbox')}</div>`);
 }
 const workspacePollHeaders=()=>({'X-Workspace-Version':encodeURIComponent(JSON.stringify([revision,role,currentName]))});
 async function updateWorkspace(){
