@@ -130,3 +130,45 @@
 :root[data-theme=dark] :is(.filter-tabs,.lead-tabs,.tabs,.task-date-group h3,.queue-heading,.task-options,.calendar-filters,.cal-weekday,.cal-date,.week-label,.week-day,.day-secondary summary){background:var(--surface)!important;border-color:var(--line)!important;color:var(--ink)}
 @media(max-width:900px){main>header>span{flex:1;max-width:none}.header-actions{flex:none}.mobile-record-table tbody td{display:grid;grid-template-columns:76px minmax(0,1fr);justify-content:normal;gap:6px 12px}.mobile-record-table td[data-label]:not([data-label=''])::before{grid-column:1;grid-row:1 / span 6}.mobile-record-table td>*{grid-column:2}.mobile-record-table td[data-label='']>*{grid-column:1}.mobile-record-table td .actions{justify-content:flex-start}.mobile-record-table td[data-label='Actions']{align-items:start}}
 .calendar-surface{overflow-x:auto;overscroll-behavior-x:contain;min-width:0}
+:root[data-theme=dark] :is(.segments,.pipeline-stage-heading,.pipeline-record){background:#1b2535!important;border-color:var(--line)!important;color:var(--ink)}
+:root[data-theme=dark] .pipeline-lead-name{color:#f0c0d8!important}
+@media(max-width:900px){.workspace-sidebar.menu-open{position:fixed!important}}
+.chat-back{display:none}.chat-activation-note{padding:20px;color:var(--muted);border-top:1px solid var(--line);line-height:1.6}
+@media(max-width:900px){
+ .chat{display:block;min-height:0;height:calc(var(--visible-height,100dvh) - 235px);overflow:hidden}
+ .chat-list-open .chat-main,.chat-thread-open .chat-sidebar{display:none}
+ .chat-list-open .chat-sidebar{height:100%;display:flex;flex-direction:column;border:0}
+ .chat-list-head{display:flex;flex-direction:column;gap:12px;padding:16px;border-bottom:1px solid var(--line)}
+ #chat-contacts{display:block;overflow-y:auto;padding:4px;flex:1;min-height:0}
+ .chat-contact{display:flex;width:100%;min-height:82px;gap:12px;text-align:left;border-radius:12px;padding:12px}
+ .chat-contact .avatar{width:44px;height:44px;flex:none}.chat-contact-label{min-width:0;flex:1}.chat-contact small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:6px;max-width:100%}
+ .chat-thread-open{height:calc(var(--visible-height,100dvh) - 165px);margin:0;border-radius:16px}
+ #view:has(.chat-thread-open)>:first-child:not(.chat){display:none}
+ .chat-thread-open .chat-main{display:flex;height:100%;min-height:0;flex-direction:column}
+ .chat-head{flex:none;padding:10px;gap:8px}.chat-head>div{min-width:0;flex:1}.chat-head strong{overflow-wrap:anywhere}.chat-head small{font-size:12px}.chat-head .avatar{width:34px;height:34px;flex:none}
+ .chat-back{display:block;min-width:44px;min-height:44px;font-size:26px;padding:0}
+ .chat-history{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}.chat-message-search{flex:none;width:calc(100% - 20px);margin:0 10px 8px}
+ .composer{flex:none}.compose-input textarea{min-height:48px;max-height:120px}.compose-input>small{display:none}
+ body.keyboard-open .chat-thread-open{height:calc(var(--visible-height,100dvh) - 112px)}
+}
+@media(max-width:700px){
+ .phone-calendar-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+ .phone-calendar-heading h1{font-size:27px;margin:0}.phone-calendar-heading p{color:var(--muted);font-size:13px;margin:6px 0 0}.phone-calendar-heading .actions{flex-wrap:wrap}
+ .phone-calendar{overflow:hidden}.phone-calendar-period{display:grid;grid-template-columns:40px minmax(0,1fr) 40px;align-items:center;gap:4px;padding:12px}
+ .phone-calendar-period h2{padding:0;text-align:center;font-size:16px;margin:0;line-height:1.4}.phone-calendar-period>button{min-height:44px;padding:6px;font-size:20px}.phone-calendar-period>button:last-child{grid-column:1/-1;font-size:13px;justify-self:center;min-height:36px;padding:6px 16px}
+ .phone-calendar-views{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;margin:0 12px 12px;padding:4px;background:var(--bg);border:1px solid var(--line);border-radius:12px}
+ .phone-calendar-views button{border:0;background:transparent;padding:8px 2px;min-height:44px;font-size:12px}.phone-calendar-views button[aria-pressed=true]{background:var(--surface);color:var(--ink);box-shadow:0 2px 8px #0001}
+ .phone-calendar-filters{border-block:1px solid var(--line);padding:0 14px}.phone-calendar-filters summary{min-height:46px;padding:12px 0;font-size:13px;cursor:pointer}.phone-calendar-filters summary small{color:var(--muted);margin-left:6px;font-size:11px}.phone-calendar-filters>div{display:grid;gap:8px;padding-bottom:12px}
+ .phone-month-grid,.phone-week-strip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;padding:12px 6px}.phone-week-label{text-align:center;font-size:12px;color:var(--muted);padding:8px 0}
+ .phone-calendar-date{border:0;background:transparent;min-width:0;min-height:48px;padding:6px 0;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--ink)}
+ .phone-calendar-date strong{font-size:13px;font-weight:600}.phone-calendar-date small{font-size:10px;color:var(--muted)}.phone-calendar-date.outside{opacity:.4}.phone-calendar-date.is-today{box-shadow:inset 0 0 0 1px var(--line)}.phone-calendar-date[aria-pressed=true]{background:#792d48;color:white;opacity:1}.phone-calendar-date[aria-pressed=true] small{color:white}
+ .phone-date-dots{display:flex;gap:2px;height:4px}.calendar-dot{display:block;width:4px;height:4px;border-radius:50%;background:#9777cc}.calendar-dot.green{background:#38a78a}.calendar-dot.blue{background:#5b9fda}.calendar-dot.rose{background:#ce7891}.calendar-dot.amber{background:#df9e43}
+ .phone-calendar-agenda{border-top:1px solid var(--line)}.phone-agenda-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:18px 14px 10px}.phone-agenda-heading h3{font-size:14px;margin:0}.phone-agenda-heading>span{font-size:11px;color:var(--muted);white-space:nowrap}
+ .phone-calendar-item{display:flex;align-items:center;gap:10px;min-height:78px;width:100%;border:0;border-radius:0;border-top:1px solid var(--line);background:transparent;padding:14px;text-align:left}
+ .phone-event-time{flex:0 0 48px;font-size:11px;color:var(--muted)}.phone-event-copy{min-width:0;flex:1}.phone-event-copy strong{display:block;font-size:14px;overflow-wrap:anywhere}.phone-event-copy small{display:block;font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5}.phone-event-chevron{color:var(--muted);font-size:22px}
+}
+@media(max-width:700px){
+ :root[data-theme=dark] .phone-calendar-date{background:transparent}
+ :root[data-theme=dark] .phone-calendar-date[aria-pressed=true]{background:#923654!important;color:white!important}
+ :root[data-theme=dark] .phone-calendar-views button[aria-pressed=true]{background:#392a3e!important;color:#f3bfd5!important}
+}

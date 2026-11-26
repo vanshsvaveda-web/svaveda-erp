@@ -23,7 +23,7 @@ const DB={prepare(sql){return {bind(...args){return {first:async()=>{
 const context=vm.createContext({crypto:webcrypto,TextEncoder,Response,Request,URL,Date,console,atob});
 for(const file of ['web/assignees.js','worker/roles.mjs','web/message-links.js','worker/messages.mjs'])vm.runInContext(await readFile(file,'utf8'),context);
 vm.runInContext("const privateHeaders={'Cache-Control':'private, no-store'};const json=(value,status=200)=>Response.json(value,{status,headers:privateHeaders});const readPayload=request=>request.json();globalThis.run=messages;globalThis.parseLinks=messageLinks;globalThis.plain=messagePlainText;",context);
-const call=async(body,{user='avery',method='POST',path='/api/messages',version,origin='https://erp.example.invalid'}={})=>context.run(new Request('https://erp.example.invalid'+path,{method,headers:{'oai-authenticated-user-id':user,'oai-authenticated-user-email':members.find(m=>m.id===user)?.email||'unknown@example.invalid','Content-Type':'application/json',Origin:origin,...(version?{'X-Message-Version':version}:{})},...(method==='POST'?{body:JSON.stringify(body)}:{})}),{DB},path);
+const call=async(body,{user='avery',method='POST',path='/api/messages',version,origin='https://erp.example.invalid',directory}={})=>context.run(new Request('https://erp.example.invalid'+path,{method,headers:{'oai-authenticated-user-id':user,'oai-authenticated-user-email':members.find(m=>m.id===user)?.email||'unknown@example.invalid','Content-Type':'application/json',Origin:origin,...(version?{'X-Message-Version':version}:{})},...(method==='POST'?{body:JSON.stringify(body)}:{})}),{DB,...(directory?{MESSAGE_DIRECTORY:directory}:{})},path);
 const payload=(body,recipient='jamie')=>({id:randomUUID(),recipient,body});
 let shared=payload('Review [[task:shared-task]] [[project:shared-project]] [[lead:shared-lead]]');
 assert.equal((await call(shared)).status,200);
@@ -46,3 +46,14 @@ await call(payload('New incoming','avery'),{user:'jamie'});assert.equal((await c
 assert.equal(context.parseLinks('[[task:shared-task]] [[task:shared-task]]').length,1);
 assert.equal(context.plain('Hello [[task:shared-task]]'),'Hello');
 console.log('PASS: shared record links; sender and recipient ACLs for task/project/lead; same-chat replies; private-note boundaries; idempotent retry; collision rejection; CSRF; removed seat; trusted directory name; conditional refresh; token deduplication.');
+
+const automatic=async()=>[...members.map(m=>({...m,role:'Employee',available:true})),{id:'seat-pending',name:'Pending teammate',email:'pending@example.invalid',role:'Employee',available:false}];
+response=await call(null,{method:'GET',directory:automatic});result=await response.json();
+assert.equal(result.automaticDirectory,true);assert.equal(result.directory.length,2);assert.equal(result.directory.find(p=>p.id==='seat-pending').available,false);assert.ok(result.directory.every(p=>!('email' in p)),'directory must not expose email addresses');
+const beforeJoins=joins.length;
+assert.equal((await call(payload('No join required'),{directory:automatic})).status,200);
+assert.equal(joins.length,beforeJoins);
+assert.equal((await call(payload('Pending','seat-pending'),{directory:automatic})).status,403);
+assert.equal((await call(payload('Removed','removed'),{directory:automatic})).status,403);
+assert.equal((await call(payload('Hidden [[task:private-task]]'),{directory:automatic})).status,403);
+console.log('PASS: automatic team directory; no-join delivery; inactive and removed recipient rejection; private email redaction; shared-record ACLs preserved.');

@@ -16,17 +16,20 @@ async function messages(request, env, path) {
   const db = env.DB;
   const url = new URL(request.url);
   if (request.method === 'GET') {
-    const directory = await db.prepare('SELECT user_id AS id, email, display_name AS name FROM message_members WHERE user_id != ? ORDER BY display_name').bind(user).all();
-    const active = [];
-    for (const person of directory.results) {
-      if (access.seats.some(seat => seat.email === person.email) || await isAdmin(person.email)) active.push({id:person.id,name:person.name});
+    let active;
+    if(env.MESSAGE_DIRECTORY){
+      active=(await env.MESSAGE_DIRECTORY(access)).filter(person=>person.id!==user).map(({id,name,role,available})=>({id,name,role,available}));
+    }else{
+      const directory=await db.prepare('SELECT user_id AS id, email, display_name AS name FROM message_members WHERE user_id != ? ORDER BY display_name').bind(user).all();
+      active=[];
+      for(const person of directory.results)if(access.seats.some(seat=>seat.email===person.email)||await isAdmin(person.email))active.push({id:person.id,name:person.name});
     }
     const records = await db.prepare(
       'SELECT id, sender_id AS sender, recipient_id AS recipient, body, attachment_name AS file, created_at AS created FROM direct_messages WHERE sender_id = ? OR recipient_id = ? ORDER BY created_at DESC, id DESC LIMIT 500'
     ).bind(user, user).all();
     const version=encodeURIComponent(JSON.stringify([records.results[0]?.id||'',records.results.length,active]));
     if(request.headers.get('X-Message-Version')===version)return new Response(null,{status:204,headers:privateHeaders});
-    return json({ user, directory: active, messages: records.results.reverse(), version });
+    return json({ user, directory: active, messages: records.results.reverse(), version, automaticDirectory:Boolean(env.MESSAGE_DIRECTORY) });
   }
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
   if (request.headers.get('Origin') !== url.origin || !request.headers.get('Content-Type')?.startsWith('application/json')) return json({ error: 'Invalid message request.' }, 403);
@@ -47,10 +50,16 @@ async function messages(request, env, path) {
   let recipientAccess=access;
   if (recipient !== user) {
     if (typeof recipient !== 'string') return json({ error: 'Choose a conversation.' }, 400);
-    const target = await db.prepare('SELECT email FROM message_members WHERE user_id = ?').bind(recipient).first();
-    if (!target || !access.seats.some(seat => seat.email === target.email) && !await isAdmin(target.email)) return json({ error: 'That member has no active workspace seat.' }, 403);
-    const members = await db.prepare('SELECT COUNT(*) AS count FROM message_members WHERE user_id IN (?, ?)').bind(user, recipient).first();
-    if (members.count !== 2) return json({ error: 'Both members must open Messages before starting a conversation.' }, 403);
+    let target;
+    if(env.MESSAGE_DIRECTORY){
+      target=(await env.MESSAGE_DIRECTORY(access)).find(person=>person.id===recipient);
+      if(target?.available===false)return json({error:'This teammate needs an activated sign-in account before receiving messages.'},403);
+    }else{
+      target=await db.prepare('SELECT email FROM message_members WHERE user_id = ?').bind(recipient).first();
+      const members=await db.prepare('SELECT COUNT(*) AS count FROM message_members WHERE user_id IN (?, ?)').bind(user,recipient).first();
+      if(members.count!==2)return json({error:'Both members must open Messages before starting a conversation.'},403);
+    }
+    if(!target||!access.seats.some(seat=>seat.email===target.email)&&!await isAdmin(target.email))return json({error:'That member has no active workspace seat.'},403);
     const recipientRequest=new Request(request.url,{headers:{'oai-authenticated-user-id':recipient,'oai-authenticated-user-email':target.email}});
     recipientAccess=await accessFor(recipientRequest,db);
     if(!recipientAccess)return json({error:'That member has no active workspace seat.'},403);

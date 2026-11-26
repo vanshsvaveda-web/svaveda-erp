@@ -499,7 +499,7 @@ document.addEventListener('click',async ev=>{
  if(act==='template'&&!isEmployee()){chooseTemplate(key);return}
  if(act==='personal-tasks'||act==='personal-lead-tasks'){personalTaskScope=true;taskFilter=key;page=act==='personal-lead-tasks'?'Lead Tasks':'Tasks';render();return}
  if(act==='personal-calendar'||act==='nav'&&key==='Calendar'){
-  if(isFounder()){closeNavigation();page='Calendar';calendarDate=agendaDate||day();render();return}
+  if(isFounder()||calendarPhone()){closeNavigation();page='Calendar';calendarDate=agendaDate||day();render();window.scrollTo({top:0});return}
   page='My Day';fullCalendarOpen=true;
   calendarDate=agendaDate||day();
   render();$('#calendar-detail').scrollIntoView({block:'start'});return

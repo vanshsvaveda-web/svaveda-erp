@@ -44,9 +44,36 @@ function weekGrid(start,entries){
  }).join('');
  return `<div class="week-grid"><div class="cal-weekday">IST</div>${days.map(date=>`<button class="cal-weekday week-day" data-act="cal-day" data-key="${date}">${calLabel(date,{weekday:'short',day:'numeric'})}</button>`).join('')}${cells('','All day')}${visibleHours.map(hour=>cells(hour,hour+':00')).join('')}</div>`;
 }
+const calendarPhone=()=>typeof matchMedia==='function'&&matchMedia('(max-width:700px)').matches;
+function phoneCalendarItems(items,heading){
+ return `<section class="phone-calendar-agenda"><div class="phone-agenda-heading"><h3>${e(heading)}</h3><span>${items.length} ${items.length===1?'item':'items'}</span></div>${items.map(item=>`<button type="button" class="phone-calendar-item" data-act="${item.action}" data-key="${e(item.id)}"><span class="phone-event-time">${item.time?e(eventTime(item.time)):item.category==='Task'||item.category==='Follow-up'?'Due':'All day'}</span><span class="phone-event-copy"><strong>${e(item.title)}</strong><small>${e([item.category,assigneeLabel(item)].filter(Boolean).join(' · '))}</small></span><span class="phone-event-chevron" aria-hidden="true">›</span></button>`).join('')||empty('Nothing scheduled. Choose another day'+(isEmployee()?'.':' or add an event.'))}</section>`;
+}
+function renderPhoneCalendar(entries,personOptions,projectOptions){
+ const month=calendarDate.slice(0,7)+'-01',week=weekStart(calendarDate);
+ const monthMode=calendarView==='Month';
+ const dates=Array.from({length:monthMode?42:7},(_,i)=>calDay(monthMode?weekStart(month):week,i));
+ const heading=monthMode?calLabel(month,{month:'long',year:'numeric'}):calendarView==='Week'?calLabel(week,{day:'numeric',month:'short'})+' – '+calLabel(calDay(week,6),{day:'numeric',month:'short'}):calLabel(calendarDate,{day:'numeric',month:'long',year:'numeric'});
+ const dateButtons=dates.map(date=>{
+  const matches=entries.filter(item=>item.date===date),selected=date===calendarDate;
+  return `<button type="button" class="phone-calendar-date ${date.slice(0,7)!==calendarDate.slice(0,7)?'outside':''} ${date===day()?'is-today':''}" data-act="cal-select" data-key="${date}" aria-pressed="${selected}" aria-label="${e(calLabel(date,{dateStyle:'full'}))}, ${matches.length} scheduled">${monthMode?'':'<small>'+e(calLabel(date,{weekday:'short'}))+'</small>'}<strong>${Number(date.slice(-2))}</strong><span class="phone-date-dots" aria-hidden="true">${matches.slice(0,3).map(item=>'<i class="calendar-dot '+(categoryColor[item.category]||'blue')+'"></i>').join('')}</span></button>`;
+ }).join('');
+ let content='';
+ if(calendarView!=='Agenda'){
+  content=`<div class="${monthMode?'phone-month-grid':'phone-week-strip'}">${monthMode?dates.slice(0,7).map(date=>'<span class="phone-week-label">'+e(calLabel(date,{weekday:'narrow'}))+'</span>').join(''):''}${dateButtons}</div>`+phoneCalendarItems(entries.filter(item=>item.date===calendarDate),calLabel(calendarDate,{weekday:'long',day:'numeric',month:'short'}));
+ }else{
+  const upcoming=entries.filter(item=>item.date>=calendarDate),groups=[...new Set(upcoming.map(item=>item.date))];
+  content=groups.map(date=>phoneCalendarItems(upcoming.filter(item=>item.date===date),calLabel(date,{weekday:'long',day:'numeric',month:'short'}))).join('')||empty('No upcoming items.');
+ }
+ ($('#my-calendar')||ui).innerHTML=`<div class="phone-calendar-heading"><div><h1>Calendar</h1><p>Plan your day · IST</p></div><div class="actions">${page==='Calendar'?btn(isFounder()?'← Overview':'← Home','nav',isFounder()?'Overview':'My Day'):''}${isEmployee()?'':btn('＋ Event','cal-add',calendarDate,true)}</div></div><article class="panel phone-calendar"><div class="phone-calendar-period"><button type="button" data-act="cal-move" data-key="-1" aria-label="Previous period">‹</button><h2>${e(heading)}</h2><button type="button" data-act="cal-move" data-key="1" aria-label="Next period">›</button>${btn('Today','cal-today')}</div><div class="phone-calendar-views" aria-label="Calendar view">${['Month','Week','Day','Agenda'].map(view=>`<button type="button" data-act="cal-view" data-key="${view}" aria-pressed="${view===calendarView}">${view}</button>`).join('')}</div><details class="phone-calendar-filters"><summary>Filters <small>${e([calendarPerson||'Everyone',calendarFilter,calendarProject?data.projects.find(p=>p.id===calendarProject)?.name:''].filter(Boolean).join(' · '))}</small></summary><div><select id="cal-person" aria-label="Filter by person">${personOptions}</select><select id="cal-project" aria-label="Filter by project">${projectOptions}</select><select id="cal-filter" aria-label="Filter items">${options(['All',...Object.keys(categoryColor)],calendarFilter)}</select></div></details>${content}</article>`;
+}
+function bindCalendarFilters(){
+ $('#cal-person').onchange=event=>{calendarPerson=event.target.value;calendar()};
+ $('#cal-project').onchange=event=>{calendarProject=event.target.value;calendar()};
+ $('#cal-filter').onchange=event=>{calendarFilter=event.target.value;calendar()};
+}
 function calendar(){
  calendarDate||=day();
- calendarView||=typeof matchMedia==='function'&&matchMedia('(max-width:650px)').matches?'Agenda':'Month';
+ calendarView||='Month';
  const month=calendarDate.slice(0,7)+'-01', week=weekStart(calendarDate);
  const all=calendarEntries();
  const people=[...new Set(all.flatMap(assignees).filter(Boolean))].sort();
@@ -54,6 +81,7 @@ function calendar(){
  const personOptions='<option value="">Everyone</option>'+people.map(name=>`<option ${name===calendarPerson?'selected':''}>${e(name)}</option>`).join('');
  const projectOptions='<option value="">All projects</option>'+data.projects.map(item=>`<option value="${e(item.id)}" ${item.id===calendarProject?'selected':''}>${e(item.name)}</option>`).join('');
 
+ if(calendarPhone()){renderPhoneCalendar(entries,personOptions,projectOptions);bindCalendarFilters();return}
  let display,heading;
  if(calendarView==='Month'){
   heading=calLabel(month,{month:'long',year:'numeric'});
@@ -68,9 +96,7 @@ function calendar(){
  }
  ($('#my-calendar')||ui).innerHTML=title('Calendar','Meetings, deadlines and holidays · India Standard Time',(isFounder()&&page==='Calendar'?btn('← Overview','nav','Overview'):'')+(isEmployee()?'':btn('＋ New event','cal-add',day(),true)))+
  `<article class="panel calendar"><div class="calendar-tools"><div class="actions"><button data-act="cal-move" data-key="-1" aria-label="Previous period">‹</button><button data-act="cal-move" data-key="1" aria-label="Next period">›</button>${btn('Today','cal-today')}<h2>${heading}</h2></div><div class="actions"><label class="sr-only" for="cal-filter">Filter items</label><select id="cal-filter">${options(['All',...Object.keys(categoryColor)],calendarFilter)}</select><div class="segments" aria-label="Calendar view">${['Month','Week','Day','Agenda'].map(view=>`<button aria-pressed="${view===calendarView}" data-act="cal-view" data-key="${view}">${view}</button>`).join('')}</div></div></div><div class="toolbar calendar-filters"><select id="cal-person" aria-label="Filter by person">${personOptions}</select><select id="cal-project" aria-label="Filter by project">${projectOptions}</select></div><div class="calendar-surface">${display}</div></article>`;
- $('#cal-person').onchange=event=>{calendarPerson=event.target.value;calendar()};
- $('#cal-project').onchange=event=>{calendarProject=event.target.value;calendar()};
- $('#cal-filter').onchange=event=>{calendarFilter=event.target.value;calendar()};
+ bindCalendarFilters();
 }
 function calendarAction(act,key){
  if(isEmployee()&&['cal-add','cal-slot'].includes(act))return;
@@ -79,6 +105,7 @@ function calendarAction(act,key){
  if(act==='cal-view')calendarView=key;
  if(act==='cal-today')calendarDate=day();
  if(act==='cal-day'){calendarDate=key;calendarView='Day'}
+ if(act==='cal-select')calendarDate=key;
  if(act==='cal-move'){
   const step=Number(key);
   if(calendarView==='Month'){

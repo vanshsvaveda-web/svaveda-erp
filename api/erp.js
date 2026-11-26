@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import worker from '../dist/server/index.js';
 import { database, withSheetWriteLock } from '../vercel/database.js';
 import { identity, loginPage, signIn, signOut } from '../vercel/auth.js';
+import { workspaceMessageDirectory } from '../vercel/message-directory.js';
 
 export default {
   async fetch(request) {
@@ -54,7 +55,7 @@ export default {
       });
       const requestIp=request.headers.get('x-vercel-forwarded-for')?.trim();
       const clientIp=process.env.VERCEL==='1'&&requestIp&&isIP(requestIp)?requestIp:null;
-      const run=DB=>worker.fetch(forwarded,{DB,CLIENT_IP:clientIp,GOOGLE_SHEETS_SERVICE_ACCOUNT:process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT,SHEET_WRITES_SERIALIZED:path==='/api/sheets/process'});
+      const run=DB=>worker.fetch(forwarded,{DB,MESSAGE_DIRECTORY:access=>workspaceMessageDirectory(access,DB),CLIENT_IP:clientIp,GOOGLE_SHEETS_SERVICE_ACCOUNT:process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT,SHEET_WRITES_SERIALIZED:path==='/api/sheets/process'});
       return path==='/api/sheets/process'?await withSheetWriteLock(run):await run(database);
     }catch(error){
       console.error('Vercel ERP request failed', error.code || error.name, error.message?.split('\n')[0]?.replace(/postgres(?:ql)?:\/\/\S+/g,'[connection redacted]'));
