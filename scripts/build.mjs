@@ -10,6 +10,7 @@ for (const [path, file, mime] of [
   ['/style.css', 'style.css', 'text/css; charset=utf-8'],
   ['/modern.css', 'modern.css', 'text/css; charset=utf-8'],
   ['/mobile.css', 'mobile.css', 'text/css; charset=utf-8'],
+  ['/premium.js','premium.js','text/javascript; charset=utf-8'],
   ['/dimension.css','dimension.css','text/css; charset=utf-8'],
   ['/fonts.css','fonts.css','text/css; charset=utf-8'],
   ...['rajdhani-700','rubik-400','rubik-500','rubik-600','rubik-700'].map(name=>['/fonts/'+name+'.woff','fonts/'+name+'.woff','font/woff']),
@@ -37,7 +38,7 @@ let worker = (await readFile('worker/index.mjs', 'utf8')) + '\n' + (await readFi
 if (process.env.VERCEL === '1' || process.env.SVAVEDA_VERCEL_BUILD === '1') {
   await mkdir('dist/public/fonts', {recursive:true});
   await mkdir('dist/public/icons', { recursive: true });
-  for (const file of ['dimension.css','fonts.css',...['rajdhani-700','rubik-400','rubik-500','rubik-600','rubik-700'].map(name=>'fonts/'+name+'.woff'),'extras.js','logo.svg','logo.png','mobile.css','signin.css','appearance.js','sw.js','manifest.webmanifest','offline.html','icons/app-192.png','icons/app-512.png','icons/maskable-512.png','style.css','modern.css','app.js','calendar.js','messages.js','message-links.js','operations.js','task-metrics.js','assignees.js','lead-history.js']) await copyFile('web/'+file,'dist/public/'+file);
+  for (const file of ['premium.js','dimension.css','fonts.css',...['rajdhani-700','rubik-400','rubik-500','rubik-600','rubik-700'].map(name=>'fonts/'+name+'.woff'),'extras.js','logo.svg','logo.png','mobile.css','signin.css','appearance.js','sw.js','manifest.webmanifest','offline.html','icons/app-192.png','icons/app-512.png','icons/maskable-512.png','style.css','modern.css','app.js','calendar.js','messages.js','message-links.js','operations.js','task-metrics.js','assignees.js','lead-history.js']) await copyFile('web/'+file,'dist/public/'+file);
   worker = worker.replace(/const ownerHash = '[a-f0-9]*';/, "const ownerHash = process.env.SVAVEDA_OWNER_EMAIL_HASH || '';");
   assets['/'].body = assets['/'].body.replace('<div class="header-actions">', '<div class="header-actions"><form method="post" action="/api/sign-out"><button>Sign out</button></form>');
 }

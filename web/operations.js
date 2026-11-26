@@ -1,17 +1,13 @@
 let projectSelection='', projectView='List', projectTab='Tasks', projectReturnPage='';
 
 function openQuickLead(){
- const people=[...new Set([...data.people.map(person=>person.name),...(roleSeats||[]).filter(seat=>seat.email).map(seat=>seat.name)])].filter(name=>name&&name!==currentName);
- form('Quick capture',input('Expert name','name','','text',true)+input('Phone (optional)','phone','','tel')+
-  input('Instagram @handle or profile link (optional)','instagram')+
-  select('Who should fill in the details?','researcher','<option value="">I’ll handle it</option>'+options(people,''))+
-  '<details class="task-options"><summary>Add a note</summary>'+area('Note','instructions')+'</details><p>Capture → Complete details → Back to you for outreach</p>',
- 'Capture lead',values=>{
-  const {researcher,...details}=values;
-  const lead={id:id(),status:'New',source:'Manual',quickCaptured:true};
-  lead.capturedBy=currentName;lead.capturedAt=Date.now();if(researcher)lead.researchReturnTo=currentName;
-  setLead(lead,{...details,owners:[researcher||currentName],due:day(1),
-    action:researcher?'Complete expert details':values.instagram?'Review Instagram lead':'Review new lead'});
+ form('Quick capture',input('Expert name','name','','text',true)+input('Phone (optional)','phone','','tel')+assigneePicker({owner:currentName,owners:[currentName]})+
+  '<details class="task-options"><summary>Instagram and notes (optional)</summary>'+input('Instagram handle or link','instagram')+area('Note','instructions')+'</details><p>The responsible person completes the details. The lead returns to you for outreach.</p>',
+ 'Capture expert',values=>{
+  const owners=responsibleFirst(values.owners,values.responsible);if(!owners.length)throw Error('Choose an assignee.');
+  const lead={id:id(),status:'New',source:'Manual',quickCaptured:true,capturedBy:currentName,capturedAt:Date.now()};
+  if(owners[0]!==currentName)lead.researchReturnTo=currentName;
+  setLead(lead,{name:values.name,phone:values.phone,instagram:values.instagram,instructions:values.instructions,owners,due:day(1),action:lead.researchReturnTo?'Complete expert details':values.instagram?'Review Instagram lead':'Review new lead'});
  },'compact');
 }
 
@@ -89,14 +85,7 @@ function renderProjects(){
  const project=data.projects.find(item=>item.id===projectSelection);
  if(!project){
   ui.innerHTML=title('Projects','Project owners, members, milestones and work.',isEmployee()?'':btn('＋ New project','project','',true))+
-  '<div class="project-card-grid">'+(data.projects.filter(project=>!isOnboardingProject(project)).map(item=>{
-   const linked=data.tasks.filter(task=>task.projectId===item.id),done=linked.filter(task=>task.status==='Done').length;
-   const overdue=linked.filter(task=>task.status!=='Done'&&task.due&&task.due<day()).length;
-   const percent=linked.length?Math.round(done/linked.length*100):0;
-   const nextDue=item.due||linked.filter(task=>task.status!=='Done'&&task.due).map(task=>task.due).sort()[0];
-   const members=[...new Set([item.owner,...(item.members||[])].filter(Boolean))];
-   return `<article class="project-card"><button class="link project-open" data-act="ops-project" data-key="${e(item.id)}">Open project →</button><span class="project-card-top"><span class="project-card-symbol">${workspaceIcon('tasks')}</span>${overdue?'<span class="pill amber">'+overdue+' overdue</span>':'<span class="pill good">'+(percent===100?'Complete':'Active')+'</span>'}</span><strong>${e(item.name)}</strong><span class="project-card-owner">${e(item.owner||'Unassigned')} · ${linked.length} tasks</span><span class="project-card-progress"><span>Progress</span><strong>${percent}%</strong></span><progress max="100" value="${percent}" aria-label="${e(item.name)} progress"></progress><span class="project-card-bottom"><span>${nextDue?'Due '+e(calLabel(nextDue,{day:'numeric',month:'short'})):'No target date'}</span><span class="task-owners">${members.slice(0,3).map(name=>'<span title="'+e(name)+'">'+e(name.split(/\s+/).slice(0,2).map(part=>part[0]).join(''))+'</span>').join('')}</span></span><details class="project-inline-tasks"><summary>View tasks (${linked.length})</summary>${linked.length?linked.slice(0,5).map(task=>`<div><button class="link" data-act="task" data-key="${e(task.id)}">${e(task.title)}</button>${pill(task.status)}</div>`).join(''):empty('No tasks yet. Add the first task from this project.')}${linked.length>5?btn('See all tasks','ops-project',item.id):''}</details></article>`;
-  }).join('')||empty('No projects yet.'))+'</div>';
+  '<div class="project-card-grid">'+(data.projects.map(projectCardMarkup).join('')||empty('No projects yet. Create a project to organise your work.'))+'</div>';
   return;
  }
  const tasks=data.tasks.filter(item=>item.projectId===project.id);
@@ -154,7 +143,8 @@ function operationsAction(act,key){
  if(act==='ops-backup'&&isSuperAdmin()){downloadBackup();return}
  if(act==='ops-leave'){const item=(data.requests||[]).find(request=>request.id===key&&request.status==='Approved');if(item)readRecord(e(item.owner)+' · Approved leave','<p>'+e(item.start+' – '+item.end)+'</p>');return}
  if(act==='ops-project-tab'){projectTab=key;renderProjects();return}
- if(act==='ops-project'){if(modal.open)modal.close();projectReturnPage=page==='My To-dos'?'My To-dos':'';projectSelection=key;projectTab='Tasks';page='Projects';render();return}
+ if(act==='ops-project'&&key){projectReturnPage=page==='My To-dos'?'My To-dos':page;openProjectPreview(key);return}
+ if(act==='ops-project-workspace'||act==='ops-project'){if(modal.open)modal.close();projectSelection=key;projectTab='Tasks';page='Projects';render();return}
  if(act==='ops-view'){projectView=key;renderProjects();return}
  if(act==='ops-milestone'&&!isEmployee()){
   const item=data.projects.find(project=>project.id===projectSelection)?.milestones.find(milestone=>milestone.id===key);

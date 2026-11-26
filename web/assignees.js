@@ -44,3 +44,15 @@ function personalTodoSummary(state,name){
  }).sort((a,b)=>(a.status==='Done')-(b.status==='Done')||(a.due||'9999').localeCompare(b.due||'9999')||String(a.project.name).localeCompare(String(b.project.name)));
  return {projects:summaries,tasks:individual.sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'))};
 }
+
+function personalTodoView(state,name,view,today){
+ const summary=personalTodoSummary(state,name);
+ const include=task=>view==='Completed'?task.status==='Done':task.status!=='Done'&&(view==='Upcoming'?Boolean(task.due&&task.due>today):!task.due||task.due<=today);
+ return {projects:summary.projects.filter(group=>group.tasks.some(include)).map(group=>({...group,viewDue:group.tasks.filter(include).map(task=>task.due).filter(Boolean).sort()[0]||''})),tasks:summary.tasks.filter(include)};
+}
+function dailyWorkProgress(state,name,today){
+ const mine=(state.tasks||[]).filter(task=>assignedTo(task,name));
+ const done=mine.filter(task=>task.status==='Done'&&(task.completedAt?new Date(task.completedAt+330*60000).toISOString().slice(0,10)===today:task.due===today)).length;
+ const pending=mine.filter(task=>task.status!=='Done'&&(!task.due||task.due<=today)).length;
+ return {done,total:pending+done};
+}

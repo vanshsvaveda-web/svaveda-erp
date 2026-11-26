@@ -6,42 +6,41 @@
 #connection-status{padding:10px 18px;background:#fff0d3;color:#6e4707;font-size:13px;text-align:center;position:sticky;top:76px;z-index:25}
 #install-help{position:fixed;inset:0;margin:auto;height:auto;max-height:85dvh;width:min(420px,calc(100vw - 32px));border-radius:20px;padding:24px;color:var(--ink);background:var(--surface);border:1px solid var(--line)}
 #install-help p{line-height:1.6}#close-install-help{width:100%;min-height:44px}
-:root[data-theme=dark]{--canvas:#10151f;--surface:#171f2c;--ink:#edf0f7;--muted:#acb7ca;--line:#303d50;--accent:#efb1ca;--accent-soft:#392736;--shadow:0 4px 22px #00000016;--text-muted:#acb7ca;color-scheme:dark}
 :root[data-theme=dark] body{background:var(--canvas);color:var(--ink)}
 :root[data-theme=dark] :is(.workspace-sidebar,main>header,.panel,.toolbar,.popup-form,.popup-heading,.popup-fields,.popup-actions,dialog,.chat-head,.composer,.compose-input,.chat-sidebar,.day-secondary,.day-utilities .day-secondary,.project-card,.create-choices,.bulk-toolbar,.calendar-tools,.week-day,.cal-weekday,.week-label,.table-toolbar,.project-progress){background:var(--surface)!important;border-color:var(--line)!important;color:var(--ink)}
-:root[data-theme=dark] :is(button,input,select,textarea){background:#1d2737;border-color:#39485f;color:var(--ink)}
+:root[data-theme=dark] :is(button,input,select,textarea){background:var(--surface-raised);border-color:var(--line);color:var(--ink)}
 :root[data-theme=dark] :is(input,select,textarea){color-scheme:dark}
-:root[data-theme=dark] :is(button:not(.primary):not(.link):hover,.task-line:hover,.board-card:hover){background:#29364b!important;border-color:#52627b!important}
-:root[data-theme=dark] :is(button.primary,#quick,.login-submit,.task-complete-action){background:#923654!important;color:#fff!important;border-color:#ad5577!important;box-shadow:none}
+:root[data-theme=dark] :is(button:not(.primary):not(.link):hover,.task-line:hover,.board-card:hover){background:var(--surface-soft)!important;border-color:var(--line)!important}
+:root[data-theme=dark] :is(button.primary,#quick,.login-submit,.task-complete-action){background:var(--accent-strong)!important;color:#fff!important;border-color:var(--accent-strong)!important;box-shadow:none}
 :root[data-theme=dark] :is(p,small,.snapshot-label,.stat-caption,.panel-title p,.workspace-count,.task-metadata small,.project-card-owner,.project-card-progress,.project-card-bottom,.calendar-tools,.cal-weekday,.week-label,.agenda-time,.message-day,.bubble time,.chat-contact-label small,.day-date,.personal-heading p,.work-section-heading small,.notification-row p,.date-strip small,.compose-input>small,.pipeline-next,.pipeline-owner-status small){color:var(--muted)!important}
 :root[data-theme=dark] :is(h1,h2,h3,strong,.task-name,.bubble-text,.notification-row strong,.project-card>strong,.personal-heading h1,.overview-heading h1,.brand,.profile-label strong,.date-strip strong,.agenda-row button,.popup-fields>label,.assignee-picker legend,.assignee-picker label,.task-options summary){color:var(--ink)!important}
-:root[data-theme=dark] :is(.link,.workspace-sidebar nav button.active,.workspace-sidebar nav button.active i,.filter-tabs button[aria-pressed=true],.segments button[aria-pressed=true],.notification-overlay-heading button){color:#f3bfd5!important}
-:root[data-theme=dark] .workspace-sidebar nav button{color:#bdc5d5!important}
-:root[data-theme=dark] :is(.brand small,.workspace-sidebar nav button i,.profile-label small,header>span,header strong){color:#b3bfd3!important}
-:root[data-theme=dark] :is(.workspace-sidebar nav button.active,.filter-tabs button[aria-pressed=true],.segments button[aria-pressed=true],.chat-contact[aria-current=true],.date-strip button[aria-pressed=true],.assignee-picker label:has(input:checked)){background:#392a3e!important;border-color:#795267!important}
-:root[data-theme=dark] :is(.snapshot-card,.board-card,.pipeline-column,.cal-cell,.week-slot,.bubble,.chat-history,.work-empty,.queue-group,.task-state-icon,.project-chip,.calendar-detail,.message-picker button){background:#1b2535!important;border-color:var(--line)!important;color:var(--ink)}
-:root[data-theme=dark] :is(.snapshot-icon,.profile-avatar,.avatar,.task-owners span,.tab-count,.workspace-count,.task-state-icon,.project-card-symbol){background:#303249!important;color:#eac0d5!important;border-color:var(--line)!important}
-:root[data-theme=dark] :is(.bubble.outgoing,.chat-reply-preview,.cal-cell.current,.week-slot.current){background:#35283e!important;border-color:#68516e!important}
-:root[data-theme=dark] :is(.chat-reference,.message-file,.project-chip){color:#eec4da!important;background:#30273b!important;border-color:#6e536c!important}
+:root[data-theme=dark] :is(.link,.workspace-sidebar nav button.active,.workspace-sidebar nav button.active i,.filter-tabs button[aria-pressed=true],.segments button[aria-pressed=true],.notification-overlay-heading button){color:var(--accent)!important}
+:root[data-theme=dark] .workspace-sidebar nav button{color:var(--muted)!important}
+:root[data-theme=dark] :is(.brand small,.workspace-sidebar nav button i,.profile-label small,header>span,header strong){color:var(--muted)!important}
+:root[data-theme=dark] :is(.workspace-sidebar nav button.active,.filter-tabs button[aria-pressed=true],.segments button[aria-pressed=true],.chat-contact[aria-current=true],.date-strip button[aria-pressed=true],.assignee-picker label:has(input:checked)){background:var(--accent-soft)!important;border-color:var(--line)!important}
+:root[data-theme=dark] :is(.snapshot-card,.board-card,.pipeline-column,.cal-cell,.week-slot,.bubble,.chat-history,.work-empty,.queue-group,.task-state-icon,.project-chip,.calendar-detail,.message-picker button){background:var(--surface-soft)!important;border-color:var(--line)!important;color:var(--ink)}
+:root[data-theme=dark] :is(.snapshot-icon,.profile-avatar,.avatar,.task-owners span,.tab-count,.workspace-count,.task-state-icon,.project-card-symbol){background:var(--surface-soft)!important;color:var(--accent)!important;border-color:var(--line)!important}
+:root[data-theme=dark] :is(.bubble.outgoing,.chat-reply-preview,.cal-cell.current,.week-slot.current){background:var(--accent-soft)!important;border-color:var(--line)!important}
+:root[data-theme=dark] :is(.chat-reference,.message-file,.project-chip){color:var(--accent)!important;background:var(--accent-soft)!important;border-color:var(--line)!important}
 :root[data-theme=dark] :is(.item,.task-line,.work-section,.notification-row,.panel-foot,.chat-head,.composer,th,td,.agenda-row,.date-strip,.calendar-filters,.cal-cell,.week-slot,.week-day,.project-card-bottom,.project-inline-tasks){border-color:var(--line)!important}
-:root[data-theme=dark] :is(th,.panel-foot){background:#1b2638!important;color:#c6d0e1}
-:root[data-theme=dark] .panel-foot button{background:#293347!important;color:#e6bfd3!important}
-:root[data-theme=dark] .pill{background:#323b4f;color:#dce1ee!important}
+:root[data-theme=dark] :is(th,.panel-foot){background:var(--surface-soft)!important;color:var(--muted)}
+:root[data-theme=dark] .panel-foot button{background:var(--surface-soft)!important;color:var(--accent)!important}
+:root[data-theme=dark] .pill{background:var(--surface-soft);color:var(--ink)!important}
 :root[data-theme=dark] .pill.good{background:#1e443b;color:#a4ead0!important}
 :root[data-theme=dark] .pill.blue{background:#253e63;color:#b7d6ff!important}
 :root[data-theme=dark] .pill.violet{background:#413457;color:#e1c5ff!important}
 :root[data-theme=dark] .pill.amber{background:#493a23;color:#f7d497!important}
 :root[data-theme=dark] .pill.rose{background:#4c2b3c;color:#ffc1d4!important}
-:root[data-theme=dark] #jump{background:#1d2737!important;color:#c8d1e1;border-color:var(--line)}
-:root[data-theme=dark] #jump kbd{background:#30394b;color:#d6ddef;border-color:#48536c}
-:root[data-theme=dark] :is(#desktop-alerts,#attendance-header button,.personal-heading button,.overview-heading button){background:#202a3b;color:#e4e7f0;border-color:#3b465a}
+:root[data-theme=dark] #jump{background:var(--surface-raised)!important;color:var(--muted);border-color:var(--line)}
+:root[data-theme=dark] #jump kbd{background:var(--surface-soft);color:var(--muted);border-color:var(--line)}
+:root[data-theme=dark] :is(#desktop-alerts,#attendance-header button,.personal-heading button,.overview-heading button){background:var(--surface-raised);color:var(--ink);border-color:var(--line)}
 :root[data-theme=dark] #notification-overlay{background:var(--surface)}
 :root[data-theme=dark] #notification-overlay::backdrop,:root[data-theme=dark] dialog::backdrop{background:#060b16aa}
 :root[data-theme=dark] .day-utilities summary{color:var(--ink)}
 :root[data-theme=dark] .day-utilities summary small{color:var(--muted)}
 :root[data-theme=dark] .task-due-late{color:#f3c579!important}
 :root[data-theme=dark] #connection-status{background:#493a23;color:#ffe1ac}
-:root[data-theme=dark] #toast{background:#eec0d5;color:#241420}
+:root[data-theme=dark] #toast{background:var(--accent);color:#241420}
 @media(max-width:900px){
  body{display:block;min-height:100dvh;overflow-x:clip}
  main{width:100%;min-width:0}
@@ -121,17 +120,17 @@
  .day-utilities{grid-template-columns:minmax(0,1fr)}.day-utilities summary{min-height:60px}.date-strip button,.agenda-week button{min-height:44px}.agenda-week{flex-wrap:wrap}.agenda-week strong{min-width:120px}
  #calendar-detail{overflow-x:auto}#my-calendar{min-width:0}.calendar-tools{flex-wrap:wrap}.cal-grid,.cal-week{min-width:600px}
  #toast{bottom:calc(88px + env(safe-area-inset-bottom));left:14px;right:14px;max-width:none;text-align:center;z-index:100;font-size:14px}
- :root[data-theme=dark] #mobile-nav{background:#171f2cf5;border-color:var(--line)}
- :root[data-theme=dark] #mobile-nav button{color:#abb7cc}
- :root[data-theme=dark] #mobile-nav button[aria-current=page],:root[data-theme=dark] #mobile-nav button[aria-expanded=true]{background:#3c2b40;color:#f2bad3}
+ :root[data-theme=dark] #mobile-nav{background:var(--glass);border-color:var(--line)}
+ :root[data-theme=dark] #mobile-nav button{color:var(--muted)}
+ :root[data-theme=dark] #mobile-nav button[aria-current=page],:root[data-theme=dark] #mobile-nav button[aria-expanded=true]{background:var(--accent-soft);color:var(--accent)}
 }
 @media(min-width:901px) and (max-width:1000px){.header-install{display:none}.appearance-label{display:none}.header-actions{gap:6px}.header-actions button{padding:8px}#jump{min-width:0}#jump kbd{display:none}}
 @media(prefers-reduced-motion:reduce){#mobile-nav button,#notification-overlay{transition:none}}
 :root[data-theme=dark] :is(.filter-tabs,.lead-tabs,.tabs,.task-date-group h3,.queue-heading,.task-options,.calendar-filters,.cal-weekday,.cal-date,.week-label,.week-day,.day-secondary summary){background:var(--surface)!important;border-color:var(--line)!important;color:var(--ink)}
 @media(max-width:900px){main>header>span{flex:1;max-width:none}.header-actions{flex:none}.mobile-record-table tbody td{display:grid;grid-template-columns:76px minmax(0,1fr);justify-content:normal;gap:6px 12px}.mobile-record-table td[data-label]:not([data-label=''])::before{grid-column:1;grid-row:1 / span 6}.mobile-record-table td>*{grid-column:2}.mobile-record-table td[data-label='']>*{grid-column:1}.mobile-record-table td .actions{justify-content:flex-start}.mobile-record-table td[data-label='Actions']{align-items:start}}
 .calendar-surface{overflow-x:auto;overscroll-behavior-x:contain;min-width:0}
-:root[data-theme=dark] :is(.segments,.pipeline-stage-heading,.pipeline-record){background:#1b2535!important;border-color:var(--line)!important;color:var(--ink)}
-:root[data-theme=dark] .pipeline-lead-name{color:#f0c0d8!important}
+:root[data-theme=dark] :is(.segments,.pipeline-stage-heading,.pipeline-record){background:var(--surface-soft)!important;border-color:var(--line)!important;color:var(--ink)}
+:root[data-theme=dark] .pipeline-lead-name{color:var(--accent)!important}
 @media(max-width:900px){.workspace-sidebar.menu-open{position:fixed!important}}
 .chat-back{display:none}.chat-activation-note{padding:20px;color:var(--muted);border-top:1px solid var(--line);line-height:1.6}
 @media(max-width:900px){
@@ -169,8 +168,8 @@
 }
 @media(max-width:700px){
  :root[data-theme=dark] .phone-calendar-date{background:transparent}
- :root[data-theme=dark] .phone-calendar-date[aria-pressed=true]{background:#923654!important;color:white!important}
- :root[data-theme=dark] .phone-calendar-views button[aria-pressed=true]{background:#392a3e!important;color:#f3bfd5!important}
+ :root[data-theme=dark] .phone-calendar-date[aria-pressed=true]{background:var(--accent-strong)!important;color:white!important}
+ :root[data-theme=dark] .phone-calendar-views button[aria-pressed=true]{background:var(--accent-soft)!important;color:var(--accent)!important}
 }
 /* Personal workspace: one work list and a quiet, optional schedule. */
 .personal-context{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-8px 0 20px;color:var(--muted);font-size:13px}.personal-context button{font-size:12px;min-height:40px}
@@ -191,7 +190,7 @@
 .header-install{display:none!important}
 body{background:radial-gradient(ellipse at 87% 5%,#eedce980,transparent 42%),radial-gradient(ellipse at 15% 80%,#e2edf480,transparent 46%),var(--canvas);background-attachment:fixed}
 :root[data-theme=dark] body{background:radial-gradient(ellipse at 85% 0%,#42263a70,transparent 45%),radial-gradient(ellipse at 0% 75%,#16333c60,transparent 45%),var(--canvas)!important;background-attachment:fixed!important}
-:root[data-theme=dark] :is(tbody tr:hover,tbody tr:hover td,.leads-panel tbody tr:hover td){background:#253144!important;color:var(--ink)!important}
+:root[data-theme=dark] :is(tbody tr:hover,tbody tr:hover td,.leads-panel tbody tr:hover td){background:var(--surface-soft)!important;color:var(--ink)!important}
 :root[data-theme=dark] tbody tr td{background:var(--surface)}
 .panel{box-shadow:0 10px 30px #1b142908,0 1px 2px #1b142906}.personal-project-heading{border-radius:0}.personal-project{overflow:hidden}
 .personal-sidebar:has(#personal-notes){display:block!important}#personal-notes{min-width:0}#personal-notes textarea{width:100%;min-height:90px;resize:vertical}#personal-notes summary small{display:block;font-size:11px;color:var(--muted);margin-top:5px}.private-note{padding:12px 0;border-top:1px solid var(--line);margin-top:14px}.private-note p{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.6}.private-note button{font-size:11px;margin-left:8px}.private-note small{font-size:10px;color:var(--muted)}

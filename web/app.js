@@ -107,7 +107,7 @@ const pill=t=>{
  const tones={Done:'good',Onboarded:'good',Approved:'good','In progress':'blue',Contacted:'blue','In review':'violet','Follow-up':'violet',Pending:'amber',Blocked:'rose',Rework:'rose',Returned:'rose','Do not contact':'rose'};
  return `<span class="pill ${tones[t]||'neutral'}">${e(t==='In review'?'Waiting for approval':t)}</span>`;
 };
-const empty=t=>`<div class="empty">${t}</div>`;
+const empty=t=>`<div class="empty"><svg class="empty-sprout" width="30" height="30" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M7 25C4 11 16 4 27 6C28 18 18 28 7 25Z" fill="var(--accent-soft)"/><path d="M7 25 24 9M13 19l-1-6m6 1 5 1" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round"/></svg><span>${t}</span></div>`;
 const title=(name,desc,action='')=>`<div class="row"><div><h1>${name}</h1><p>${desc}</p></div><div class="actions">${action}</div></div>`;
 const listItem=(name,desc,action='')=>`<div class="item row" style="margin:0"><div><strong>${e(name)}</strong><p>${e(desc)}</p></div>${action}</div>`;
 const panel=(name,html)=>`<article class="panel"><h2>${name}</h2>${html}</article>`;
@@ -137,7 +137,7 @@ function form(title,fields,submit,handler,size='regular',onSaved){
  modal.querySelector('form').onsubmit=async event=>{
   event.preventDefault();if(busy)return;
   const button=event.currentTarget.querySelector('.primary'), error=$('#error');
-  const originalLabel=button.textContent;button.textContent='Saving…';button.disabled=true;busy=true;error.textContent='';
+  const originalLabel=button.textContent;button.textContent='Saving…';button.disabled=true;button.setAttribute('aria-busy','true');busy=true;error.textContent='';
   try{
    const values=new FormData(event.currentTarget);
    const fields=Object.fromEntries(values);
@@ -152,7 +152,7 @@ function form(title,fields,submit,handler,size='regular',onSaved){
    restoreDraft(data,committed);
    error.textContent=problem.message;
    error.scrollIntoView({block:'nearest'});
-  }finally{busy=false;button.disabled=false;button.textContent=originalLabel}
+  }finally{busy=false;button.disabled=false;button.removeAttribute('aria-busy');button.textContent=originalLabel}
  };
  bindResponsiblePicker();
  modal.showModal();
@@ -177,29 +177,7 @@ function attendanceCard(){
 }
 const taskRows=tasks=>tasks.length?tasks.map(t=>`<div class="item task-line"><div><button class="link task-name" data-act="task" data-key="${e(t.id)}">${e(t.title)}</button><small>${[assigneeLabel(t)||'Unassigned',t.due?'Due '+t.due:'No due date',t.priority].filter(Boolean).map(e).join(' · ')}</small></div>${pill(t.status)}</div>`).join(''):empty('No tasks in this view.');
 let dayTaskQueue, agendaDate, fullCalendarOpen=false, dayScheduleOpen=false;
-function renderPersonal(){
- const today=day(),queues=personalWorkQueues(data,currentName,today);
- if(!queues[dayTaskQueue])dayTaskQueue='Next up';
- const all=queues[dayTaskQueue],limit=personalShowAll?all.length:6,visible=all.slice(0,limit);
- const groups=new Map();
- for(const task of visible){const key=task.projectId||'';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(task)}
- const work=[...groups].map(([key,tasks])=>{
-  const project=data.projects.find(item=>item.id===key);
-  return `<section class="personal-project"><div class="personal-project-heading"><h3>${e(project?.name||'Individual tasks')}</h3>${project?btn('Project','ops-project',project.id):''}</div>${tasks.map(dayTaskRow).join('')}</section>`;
- }).join('')||`<div class="work-empty">${workspaceIcon(dayTaskQueue==='Completed'?'check':'tasks')}<h3>${dayTaskQueue==='Completed'?'No completed tasks yet':'Nothing in '+e(dayTaskQueue.toLowerCase())}</h3><p>Your assigned work appears here automatically.</p></div>`;
- const activeLeadTasks=new Set(data.tasks.filter(task=>assignedTo(task,currentName)&&task.status!=='Done').map(task=>task.lead));
- const looseFollowUps=data.leads.filter(lead=>assignedTo(lead,currentName)&&!activeLeadTasks.has(lead.id)&&lead.due&&lead.due<=today&&!['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status));
- const captures=data.leads.filter(lead=>lead.researchReturnTo===currentName);
- const meetings=data.events.filter(event=>event.date===today&&(!event.owner||assignedTo(event,currentName)));
- const ownAlerts=activityAlerts(data).filter(item=>personalNotification(item));
- const unread=ownAlerts.filter(item=>!readNotifications().has(item.id)).length;
- const upcoming=queues['Next up'].filter(task=>task.due>today).length;
- ui.innerHTML=`<div class="personal-heading"><div><div class="day-date">${e(calLabel(today,{weekday:'long',day:'numeric',month:'long'}))} · IST</div><h1>${greeting()}, ${e(currentName)}<span class="greeting-dot">.</span></h1><p class="daily-quote">${e(dailyQuote())}</p></div><div class="actions">${btn('Calendar','personal-calendar')}${btn('My to-dos','nav','My To-dos')}${isEmployee()?btn('Add to-do','task','',true):btn('＋ Quick capture','quick-lead','',true)}${isFounder()?btn('Company overview','nav','Overview'):''}</div></div>
- <div class="personal-context"><span>${queues['In progress'].length} in progress · ${queues['Next up'].filter(task=>task.due&&task.due<today).length} overdue${upcoming?' · '+upcoming+' upcoming':''}</span>${btn(unread?unread+' personal '+(unread===1?'update':'updates'):'My updates','personal-updates')}</div>
- ${queues['Next up'].length?'<div class="attention-banner" role="status"><span>'+queues['Next up'].length+' assigned '+(queues['Next up'].length===1?'task needs':'tasks need')+' your next step</span>'+btn('Open first task','task',queues['Next up'][0].id)+'</div>':''}
- <div class="personal-layout"><article class="panel work-panel"><div class="toolbar filter-tabs work-tabs" aria-label="My work filters">${Object.entries(queues).map(([label,items])=>`<button data-act="day-work-filter" data-key="${label}" aria-pressed="${label===dayTaskQueue}">${label} <span class="tab-count">${items.length}</span></button>`).join('')}</div>${work}${all.length>6?'<div class="panel-foot">'+btn(personalShowAll?'Show fewer':'Show all '+all.length,'personal-more')+'</div>':''}${looseFollowUps.length&&dayTaskQueue==='Next up'?'<details class="personal-extra"><summary>Other follow-ups due · '+looseFollowUps.length+'</summary>'+looseFollowUps.slice(0,6).map(lead=>listItem(lead.name,'Follow-up #'+(loggedFollowUps(lead).length+1)+' · '+lead.action,btn('Follow up','outcome',lead.id))).join('')+'</details>':''}</article>
- <aside class="personal-sidebar">${personalNotesMarkup()}${panel('My schedule today',meetings.slice(0,3).map(event=>listItem(event.title,eventTime(event.time)||'All day',btn('Open','event',event.id))).join('')||empty('No meetings today.'))}${captures.length?'<details class="panel personal-extra"><summary>Waiting for expert details · '+captures.length+'</summary>'+captures.slice(0,5).map(lead=>listItem(lead.name,'With '+assigneeLabel(lead),btn('View','lead',lead.id))).join('')+'</details>':''}${isEmployee()?'<details class="panel personal-extra"><summary>My requests</summary>'+personalRequests()+'</details>':''}</aside></div>`;bindPersonalNotes();
-}
+function renderPersonal(){renderPersonalPremium()}
 let personalShowAll=false,personalNotifications=false;
 
 function dayTaskRow(task){
@@ -222,29 +200,14 @@ function dayAgenda(){
  <div class="agenda-items">${entries.map(item=>`<div class="agenda-row"><span class="agenda-time">${item.time?e(eventTime(item.time)):item.category==='Task'||item.category==='Follow-up'?'Due':'All day'}</span><div><button class="link" data-act="${item.action}" data-key="${e(item.id)}">${e(item.title)}</button><small>${e(item.category)}</small></div></div>`).join('')||empty('Nothing scheduled for this day.')}</div>
  ${isEmployee()?'':`<div class="panel-foot">${btn('＋ Add event','cal-add',agendaDate)}</div>`}</div>`;
 }
-function renderHome(open,unassigned,due){
- const today=day();
- const tasks=open.filter(task=>taskSection(task)==='Operations').sort((a,b)=>(a.status!=='Rework')-(b.status!=='Rework')||(a.due||'9999').localeCompare(b.due||'9999'));
- const followUps=due;
- const meetings=data.events.filter(item=>item.date===today&&item.category!=='Holiday').sort((a,b)=>(a.time||'').localeCompare(b.time||''));
- const bars=[
-  ['Open tasks',tasks.length,'Tasks','blue','✓'],
-  ['Follow-ups due',followUps.length,'Expert Leads','violet','◎'],
-  ['Unassigned leads',unassigned.length,'Unassigned','amber','◎'],
-  ['Awaiting review',reviewRows().length,'Review Queue','green','›']
- ];
- const date=new Intl.DateTimeFormat('en-IN',{dateStyle:'full',timeZone:'Asia/Kolkata'}).format(new Date());
- ui.innerHTML=`<div class="overview-heading"><div><div class="day-date">${e(date)}</div><h1>Workspace overview</h1></div><div class="actions">${btn('My Day','nav','My Day')}${btn(workspaceIcon('calendar')+' Calendar','nav','Calendar')}${btn('Review queue','nav','Review Queue')}${btn('New task','task')}${btn('＋ Quick capture','quick-lead','',true)}</div></div>
- <div class="snapshot">${bars.map(([label,value,target,color,icon])=>`<button class="snapshot-card" data-act="home-link" data-key="${target}" data-label="${label}"><span class="snapshot-icon ${color}" aria-hidden="true">${icon}</span><span class="snapshot-label">${label}</span><strong>${value}</strong><span class="snapshot-arrow" aria-hidden="true">›</span></button>`).join('')}</div>
- <div class="split home-columns"><div>${panel('Team tasks',taskRows(tasks.slice(0,6))+`<div class="panel-foot">${btn('View tasks','nav','Tasks')}</div>`)}${panel('Expert follow-ups',followUps.slice(0,6).map(l=>listItem(l.name,l.owner||'Unassigned',btn('Follow up','outcome',l.id))).join('')||empty('No follow-ups due.'))}</div>
- <div>${notificationPanel()}${isFounder()?'':panel('Attendance',attendanceCard())}${panel('Today’s meetings',(meetings.map(item=>listItem(item.title,[eventTime(item.time),item.owner].filter(Boolean).join(' · '),btn('Open','event',item.id))).join('')||empty('No meetings today.'))+`<div class="panel-foot">${btn('Open calendar','nav','Calendar')}</div>`)}</div></div>`;
-
-}
+function renderHome(open,unassigned,due){renderFounderPremium(open,unassigned,due)}
 
 let renderedWorkspacePage;
 function render(){
  const previous=renderedWorkspacePage;
+ window.SvaVedaVisuals?.cleanup();
  renderWorkspace();
+ window.SvaVedaVisuals?.enhance(ui);
  ui.querySelectorAll('table').forEach(table=>{const labels=[...table.querySelectorAll('thead th')].map(th=>th.textContent.trim());if(!labels.length)return;table.classList.add('mobile-record-table');table.querySelectorAll('tbody tr').forEach(row=>[...row.cells].forEach((cell,i)=>cell.dataset.label=labels[i]||''));});
  const signOut=document.querySelector('.header-actions form[action="/api/sign-out"] button');
  if(signOut){signOut.innerHTML=workspaceIcon('logout')+'<span class="sign-out-label">Sign out</span>';signOut.setAttribute('aria-label','Sign out');}
@@ -315,7 +278,7 @@ function renderWorkspace(){
   const context=[leadColumn(lead,'Brand / Organisation'),leadColumn(lead,'City'),lead.area].filter(Boolean).join(' · ');
   const due=lead.due?'Due '+lead.due:'';
   return `<tr>${checkbox?`<td><input type="checkbox" aria-label="Select ${e(lead.name)}" data-check="${e(lead.id)}" ${selected.has(lead.id)?'checked':''}></td>`:''}
-  <td><button class="link lead-name" data-act="lead" data-key="${e(lead.id)}">${e(lead.name)}</button>${context||lead.phone?`<small>${e(context||lead.phone)}</small>`:''}${leadSyncBadge(lead)}</td>
+  <td>${inlineLeadContact(lead,context)}</td>
   <td>${pill(lead.status)}</td><td>${assigneeLinks(lead)}</td>
   <td>${lead.action?`<strong>${e(lead.action)}</strong><small>Follow-up #${loggedFollowUps(lead).length+1} · ${loggedFollowUps(lead).length} logged</small>`:'<span class="muted">—</span>'}${due?`<small>${e(due)}</small>`:''}</td>
   <td><div class="lead-row-actions">${checkbox?btn(lead.owner?'Reassign':'Assign','assign',lead.id):''}${btn('Follow up','outcome',lead.id)}</div></td></tr>`;
@@ -659,10 +622,11 @@ $('#quick').onclick=()=>{
  modal.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>modal.close()));modal.showModal();
 };
 function readRecord(heading,body){
- modal.innerHTML='<h2>'+heading+'</h2>'+body+'<button id="close-record">Close</button>';
- $('#close-record').onclick=()=>modal.close();
- modal.showModal();
+ if(modal.open)modal.close();modal.setAttribute('aria-labelledby','record-read-title');
+ modal.innerHTML='<div class="record-detail"><div class="record-heading"><h2 id="record-read-title">'+heading+'</h2><button type="button" id="close-record" aria-label="Close details">'+closeIcon()+'</button></div><div class="record-content">'+body+'</div></div>';
+ $('#close-record').onclick=()=>modal.close();modal.showModal();
 }
+
 function renderRoles(){
  const rows=[{name:currentName,email:'Current Site owner',role:'Super Admin'},...roleSeats];
  const roleIndex={Founder:0,Employee:0};
@@ -702,6 +666,9 @@ function openJump(){
   return !isEmployee()||!['Overview','Employees','Review Queue'].includes(name);
  });
  const destinations=[
+ {name:'Add to-do',type:'Action',act:'task',key:''},
+ ...(!isEmployee()?[{name:'Quick capture an expert',type:'Action',act:'quick-lead',key:''}]:[]),
+ ...(!isEmployee()?[{name:'Create calendar event',type:'Action',act:'event',key:''}]:[]),
  ...pages.map(name=>({name,type:'Page',act:'nav',key:name})),
  ...data.tasks.map(item=>({name:item.title,type:'Task',act:'task',key:item.id})),
  ...data.leads.map(item=>({name:item.name,type:'Expert lead',act:'lead',key:item.id})),
@@ -709,7 +676,7 @@ function openJump(){
  ];
  function update(){
   const query=search.value.trim().toLowerCase();
-  const matches=destinations.filter(item=>!query?item.type==='Page':(item.name+' '+item.type).toLowerCase().includes(query)).slice(0,30);
+  const matches=destinations.filter(item=>!query?['Page','Action'].includes(item.type):(item.name+' '+item.type).toLowerCase().includes(query)).slice(0,30);
   results.innerHTML=matches.map(item=>`<button class="jump-result" data-act="${item.act}" data-key="${e(item.key)}"><strong>${e(item.name)}</strong><small>${item.type}</small></button>`).join('')||empty('No matching pages or records.');
  }
  search.oninput=update;
