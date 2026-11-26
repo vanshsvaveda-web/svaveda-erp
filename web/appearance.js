@@ -7,7 +7,7 @@
  function apply(){
   const dark=preference==='dark'||preference==='system'&&system.matches;
   root.dataset.theme=dark?'dark':'light';root.style.colorScheme=dark?'dark':'light';
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content',dark?'#10151f':'#f5f6fa');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content',dark?'#1b1017':'#fbf5e9');
   document.querySelectorAll('[data-theme-toggle]').forEach(button=>{
    const label=preference==='system'?'System':dark?'Dark':'Light';
    button.innerHTML=(preference==='system'?'◐':dark?'☾':'☀')+'<span class="appearance-label">'+label+'</span>';
@@ -32,8 +32,22 @@
    const prompt=installPrompt;installPrompt=null;try{await prompt.prompt();await prompt.userChoice}catch{help()}updateInstall();
   }
  });
+ function initDimension(){
+  if(document.querySelector('.dimension-scene'))return;
+  const scene=document.createElement('div');scene.className='dimension-scene';scene.setAttribute('aria-hidden','true');
+  scene.innerHTML='<div class="dimension-depth"><span class="dimension-orb one"></span><span class="dimension-orb two"></span><span class="dimension-orbit"><i></i><i></i><i></i></span><span class="dimension-pearl"></span></div>';
+  document.body.prepend(scene);
+  const motion=matchMedia('(prefers-reduced-motion: reduce)'),pointer=matchMedia('(hover: hover) and (pointer: fine)'),depth=scene.firstElementChild;
+  let frame=0,x=0,y=0;
+  const enabled=()=>!motion.matches&&pointer.matches&&!navigator.connection?.saveData&&!document.hidden;
+  function reset(){cancelAnimationFrame(frame);frame=0;depth.removeAttribute('style')}
+  function move(event){if(!enabled()||frame)return;x=event.clientX/innerWidth-.5;y=event.clientY/innerHeight-.5;frame=requestAnimationFrame(()=>{frame=0;depth.style.setProperty('--scene-x',Math.round(x*22)+'px');depth.style.setProperty('--scene-y',Math.round(y*18)+'px');depth.style.setProperty('--scene-rx',(-y*3)+'deg');depth.style.setProperty('--scene-ry',(x*3)+'deg')})}
+  function visibility(){root.toggleAttribute('data-scene-paused',document.hidden||!!navigator.connection?.saveData);if(!enabled())reset()}
+  document.addEventListener('pointermove',move,{passive:true});document.documentElement.addEventListener('pointerleave',reset);
+  document.addEventListener('visibilitychange',visibility);motion.addEventListener('change',reset);pointer.addEventListener('change',reset);visibility();
+ }
  function ready(){
-  apply();updateInstall();
+  apply();updateInstall();initDimension();
   const banner=document.getElementById('connection-status');
   const connectivity=()=>{if(banner){banner.hidden=navigator.onLine;banner.textContent='You’re offline. Reconnect before saving or syncing.'}};
   addEventListener('online',connectivity);addEventListener('offline',connectivity);connectivity();
