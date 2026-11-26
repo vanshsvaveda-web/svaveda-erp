@@ -20,7 +20,7 @@ let leadPage=1;
 let page='My Day',filter='All leads',query='',taskFilter='Open',selected=new Set(),toastTimer;
 const nav=[
  {name:'Home',icon:'⌂',pages:['Overview','My Day','Review Queue','Inbox','Calendar']},
- {name:'Operations',icon:'☷',pages:['Tasks','Projects']},
+ {name:'Operations',icon:'☷',pages:['My To-dos','Tasks','Projects']},
  {name:'Marketing',icon:'◈',pages:['Marketing Tasks']},
  {name:'Sales',icon:'◎',pages:['Expert Leads','Pipeline','Lead Tasks']},
  {name:'Team',icon:'♙',pages:['Team To-dos','Monthly Attendance','Employees','Attendance','Performance']},
@@ -50,6 +50,7 @@ const workspaceIcons={
  calendar:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18"/>',
 };
 const workspaceIcon=name=>'<svg class="workspace-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(workspaceIcons[name]||workspaceIcons.tasks)+'</svg>';
+const closeIcon=()=>'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';
 const statuses=['New','Contacted','Follow-up','Interested','Registered','Verified','Program listed','Onboarded','Not reachable','Not interested','Invalid number','Do not contact'];
 const actions=['Initial call','Send details','Follow-up','Schedule meeting','Collect documents','Verify documents','Registration','Program listing','Complete onboarding'];
 const taskStatuses=['To do','In progress','Blocked','On hold','In review','Rework','Done'];
@@ -130,6 +131,7 @@ function restoreDraft(target,saved){
  }
 }
 function form(title,fields,submit,handler,size='regular',onSaved){
+ modal.setAttribute('aria-labelledby','record-dialog-title');
  modal.innerHTML=`<form class="popup-form ${size==='compact'?'popup-compact':''}"><div class="popup-heading"><h2 id="record-dialog-title">${title}</h2><button type="button" class="popup-close" id="cancel" aria-label="Close">×</button></div><div class="popup-fields">${fields}<p role="alert" id="error"></p></div><div class="popup-actions"><button type="button" id="cancel-form">Cancel</button><button class="primary">${submit}</button></div></form>`;
  $('#cancel').onclick=$('#cancel-form').onclick=()=>{if(!busy)modal.close()};
  modal.querySelector('form').onsubmit=async event=>{
@@ -192,7 +194,7 @@ function renderPersonal(){
  const ownAlerts=activityAlerts(data).filter(item=>personalNotification(item));
  const unread=ownAlerts.filter(item=>!readNotifications().has(item.id)).length;
  const upcoming=queues['Next up'].filter(task=>task.due>today).length;
- ui.innerHTML=`<div class="personal-heading"><div><div class="day-date">${e(calLabel(today,{weekday:'long',day:'numeric',month:'long'}))} · IST</div><h1>${greeting()}, ${e(currentName)}<span class="greeting-dot">.</span></h1><p class="daily-quote">${e(dailyQuote())}</p></div><div class="actions">${btn('Calendar','personal-calendar')}${isEmployee()?btn('New task','task','',true):btn('＋ Quick capture','quick-lead','',true)}${isFounder()?btn('Company overview','nav','Overview'):''}</div></div>
+ ui.innerHTML=`<div class="personal-heading"><div><div class="day-date">${e(calLabel(today,{weekday:'long',day:'numeric',month:'long'}))} · IST</div><h1>${greeting()}, ${e(currentName)}<span class="greeting-dot">.</span></h1><p class="daily-quote">${e(dailyQuote())}</p></div><div class="actions">${btn('Calendar','personal-calendar')}${btn('My to-dos','nav','My To-dos')}${isEmployee()?btn('Add to-do','task','',true):btn('＋ Quick capture','quick-lead','',true)}${isFounder()?btn('Company overview','nav','Overview'):''}</div></div>
  <div class="personal-context"><span>${queues['In progress'].length} in progress · ${queues['Next up'].filter(task=>task.due&&task.due<today).length} overdue${upcoming?' · '+upcoming+' upcoming':''}</span>${btn(unread?unread+' personal '+(unread===1?'update':'updates'):'My updates','personal-updates')}</div>
  ${queues['Next up'].length?'<div class="attention-banner" role="status"><span>'+queues['Next up'].length+' assigned '+(queues['Next up'].length===1?'task needs':'tasks need')+' your next step</span>'+btn('Open first task','task',queues['Next up'][0].id)+'</div>':''}
  <div class="personal-layout"><article class="panel work-panel"><div class="toolbar filter-tabs work-tabs" aria-label="My work filters">${Object.entries(queues).map(([label,items])=>`<button data-act="day-work-filter" data-key="${label}" aria-pressed="${label===dayTaskQueue}">${label} <span class="tab-count">${items.length}</span></button>`).join('')}</div>${work}${all.length>6?'<div class="panel-foot">'+btn(personalShowAll?'Show fewer':'Show all '+all.length,'personal-more')+'</div>':''}${looseFollowUps.length&&dayTaskQueue==='Next up'?'<details class="personal-extra"><summary>Other follow-ups due · '+looseFollowUps.length+'</summary>'+looseFollowUps.slice(0,6).map(lead=>listItem(lead.name,'Follow-up #'+(loggedFollowUps(lead).length+1)+' · '+lead.action,btn('Follow up','outcome',lead.id))).join('')+'</details>':''}</article>
@@ -264,13 +266,13 @@ function renderWorkspace(){
  if(['Expert Leads','Pipeline','Lead Tasks'].includes(page))salesLastPage=page;
  const module=nav.find(item=>item.pages.includes(page==='Projects'&&isOnboardingProject(data.projects.find(project=>project.id===projectSelection))?'Lead Tasks':page));
  $('aside footer').innerHTML=`<span class="profile-avatar">${e(currentName.split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase())}</span><span class="profile-label"><strong>${e(currentName)}</strong><small>${e(role)}</small></span>`;
- const entries=[[isFounder()?'Overview':'My Day','home','Home'],['Tasks','tasks','Operations'],['Marketing Tasks','marketing','Marketing'],['Expert Leads','sales','Sales'],['Messages','messages','Messages'],['Attendance','team','Team'],['Integrations','settings','Settings']];
- const labels={'Expert Leads':'Sales',Tasks:'Operations','Marketing Tasks':'Marketing',Attendance:'Team',Integrations:'Settings'};
+ const entries=[[isFounder()?'Overview':'My Day','home','Home'],[isEmployee()?'My To-dos':'Tasks','tasks','Operations'],['Marketing Tasks','marketing','Marketing'],['Expert Leads','sales','Sales'],['Messages','messages','Messages'],['Attendance','team','Team'],['Integrations','settings','Settings']];
+ const labels={'Expert Leads':'Sales',Tasks:'Operations','My To-dos':'Operations','Marketing Tasks':'Marketing',Attendance:'Team',Integrations:'Settings'};
  $('nav').innerHTML=entries.filter(([name])=>name!=='Integrations'||isSuperAdmin()).map(([name,icon,group])=>{
   const active=module.name===group;
   return `<button ${active?'class="active" aria-current="page"':''} data-act="nav" data-key="${group==='Sales'?salesLastPage:name}"><i aria-hidden="true">${workspaceIcon(icon)}</i>${labels[name]||name}</button>`;
  }).join('');
- const mobilePages=[[isFounder()?'Overview':'My Day','home','Home'],['Tasks','tasks','Work'],[salesLastPage,'sales','Sales'],['Messages','messages','Chat']];
+ const mobilePages=[[isFounder()?'Overview':'My Day','home','Home'],[isEmployee()?'My To-dos':'Tasks','tasks','Work'],[salesLastPage,'sales','Sales'],['Messages','messages','Chat']];
  $('#mobile-nav').innerHTML=mobilePages.map(([target,icon,label])=>`<button type="button" data-act="nav" data-key="${target}" ${module.name==={Home:'Home',Work:'Operations',Sales:'Sales',Chat:'Messages'}[label]?'aria-current="page"':''}>${workspaceIcon(icon)}<span>${label}</span></button>`).join('')+`<button type="button" data-act="mobile-more" aria-label="More navigation" aria-expanded="${$('.workspace-sidebar').classList.contains('menu-open')}">${workspaceIcon('team')}<span>More</span></button>`;
  const signOutForm=document.querySelector('.header-actions form[action="/api/sign-out"]');
  if(signOutForm)$('aside footer').insertAdjacentHTML('beforeend','<form class="mobile-sign-out" method="post" action="/api/sign-out"><button>Sign out</button></form>');
@@ -281,6 +283,7 @@ function renderWorkspace(){
  $('#subnav').hidden=true;
  $('#crumb').textContent=module.name===page?page:module.name+' / '+page;
  const open=data.tasks.filter(t=>t.status!=='Done'), unassigned=data.leads.filter(l=>!l.owner), due=data.leads.filter(l=>l.due&&l.due<=day()&&!['Do not contact','Not interested','Onboarded','Invalid number'].includes(l.status));
+ if(page==='My To-dos'){renderMyTodos();return}
  if(page==='Calendar'){ui.innerHTML='';calendar();return}
  if(page==='My Day'||page==='Overview'&&isEmployee()){renderPersonal();return}
  if(page==='Overview'){
@@ -589,7 +592,7 @@ document.addEventListener('click',async ev=>{
  if(researchLead){openLeadResearch(researchLead);return;}
  if(t.lead&&t.status!=='Done'&&data.leads.some(lead=>lead.id===t.lead)){openLeadOutcome(t.lead);return;}
  if(isEmployee()&&!key){
-  form('My new task',input('Task description','title','','text',true)+input('Due date (optional)','due',day(),'date')+area('Notes (optional)','note')+'<details class="task-options"><summary>Category, priority and estimate (optional)</summary>'+select('Category','department',options(['',...taskDepartments],''))+select('Priority','priority',options(['Low','Medium','High','Urgent'],'Medium'))+taskAmount('Estimated hours','hours')+select('Repeat','repeat',options(['None','Daily','Weekly','Monthly'],'None'))+'</details><p>This task is assigned to you and visible to founders and Super Admin.</p>','Add task',value=>({type:'task-create',id:t.id,...value}),'compact');return;
+  form('Add to-do',input('Task description','title','','text',true)+input('Due date (optional)','due',day(),'date')+area('Notes (optional)','note')+'<details class="task-options"><summary>Category, priority and estimate (optional)</summary>'+select('Category','department',options(['',...taskDepartments],''))+select('Priority','priority',options(['Low','Medium','High','Urgent'],'Medium'))+taskAmount('Estimated hours','hours')+select('Repeat','repeat',options(['None','Daily','Weekly','Monthly'],'None'))+'</details><p>This task is assigned to you and visible to founders and Super Admin.</p>','Add to-do',value=>({type:'task-create',id:t.id,...value}),'compact');return;
  }
  if(isEmployee()){
   if(t.status==='Done'){readRecord(e(t.title),'<p>Completed</p><p>'+e(t.note)+'</p>'+download(t.file)+download(t.submission)+discussionPreview('task',t));return}
@@ -649,7 +652,12 @@ document.addEventListener('click',async ev=>{
  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='svaveda-expert-leads.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
  }
 });
-$('#quick').onclick=()=>{modal.innerHTML='<div class="search-dialog-heading"><h2>Create</h2>'+btn('×','extra-close-modal')+'</div><div class="create-choices">'+btn('Quick capture','quick-lead')+btn('Expert lead','lead')+btn('Task','task')+btn('Calendar event','event')+(isSuperAdmin()?btn('Employee','person'):'')+'</div>';modal.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>modal.close()));modal.showModal()};
+$('#quick').onclick=()=>{
+ const choices=[['Quick capture','Drop an expert name or contact','sales','quick-lead'],['Expert lead','Add contact details and a next step','team','lead'],['Task','Assign work and set a due date','tasks','task'],['Calendar event','Plan a meeting or reminder','calendar','event'],...(isSuperAdmin()?[['Employee','Add someone to your workspace','team','person']]:[])];
+ modal.setAttribute('aria-labelledby','create-title');
+ modal.innerHTML='<div class="search-dialog-heading"><div><h2 id="create-title">Create</h2><p class="dialog-caption">Add to your workspace</p></div><button type="button" class="dialog-dismiss" aria-label="Close create menu">'+closeIcon()+'</button></div><div class="create-choices">'+choices.map(([title,description,icon,act])=>'<button type="button" data-act="'+act+'"><span class="create-choice-icon">'+workspaceIcon(icon)+'</span><span class="create-choice-copy"><strong>'+title+'</strong><small>'+description+'</small></span></button>').join('')+'</div>';
+ modal.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>modal.close()));modal.showModal();
+};
 function readRecord(heading,body){
  modal.innerHTML='<h2>'+heading+'</h2>'+body+'<button id="close-record">Close</button>';
  $('#close-record').onclick=()=>modal.close();
@@ -684,7 +692,7 @@ function renderRoles(){
 const jump=$('#jump-dialog');
 function openJump(){
  if(!data||busy||modal.open||jump.open)return;
- jump.innerHTML=`<div class="search-dialog-heading"><h2 id="jump-title">Search workspace</h2><button id="close-jump" type="button" aria-label="Close search">×</button></div><input id="jump-query" type="search" placeholder="Find a page, task, lead, or project" aria-label="Search workspace" autocomplete="off"><div id="jump-results"></div>`;
+ jump.innerHTML=`<div class="search-dialog-heading"><h2 id="jump-title">Search workspace</h2><button id="close-jump" class="dialog-dismiss" type="button" aria-label="Close search">${closeIcon()}</button></div><div class="jump-input-wrap"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="jump-query" type="search" placeholder="Search pages, tasks, leads…" aria-label="Search workspace" autocomplete="off"></div><div id="jump-results" role="group" aria-label="Search results"></div><div class="jump-keyboard-hints" aria-hidden="true"><span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span><span><kbd>Enter</kbd> Open</span><span><kbd>Esc</kbd> Close</span></div>`;
  const search=$('#jump-query'), results=$('#jump-results');
  $('#close-jump').onclick=()=>jump.close();
  const pages=nav.flatMap(group=>group.pages).filter(name=>{

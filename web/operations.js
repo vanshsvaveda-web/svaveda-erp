@@ -1,4 +1,4 @@
-let projectSelection='', projectView='List', projectTab='Tasks';
+let projectSelection='', projectView='List', projectTab='Tasks', projectReturnPage='';
 
 function openQuickLead(){
  const people=[...new Set([...data.people.map(person=>person.name),...(roleSeats||[]).filter(seat=>seat.email).map(seat=>seat.name)])].filter(name=>name&&name!==currentName);
@@ -113,7 +113,7 @@ function renderProjects(){
   Members:members.map(name=>listItem(name,name===project.owner?'Project owner':'Project member')).join('')||empty('No project members yet.')
  };
  ui.innerHTML=title(e(project.name),[project.owner?'Owner: '+project.owner:'',project.due?'Target: '+project.due:''].filter(Boolean).map(e).join(' · '),
- (isOnboardingProject(project)?btn('Back to lead tasks','nav','Lead Tasks'):btn('Back to Daily Operations','nav','Tasks'))+(isEmployee()?'':btn('Edit project','project',project.id)+btn('＋ Add task','task','',true)))+
+ (projectReturnPage==='My To-dos'?btn('Back to my to-dos','nav','My To-dos'):isOnboardingProject(project)?btn('Back to lead tasks','nav','Lead Tasks'):btn('Back to Daily Operations','nav','Tasks'))+(isEmployee()?'':btn('Edit project','project',project.id)+btn('＋ Add task','task','',true)))+
  `<div class="panel project-progress"><div><strong>${completed}% complete</strong><small>${done} of ${tasks.length} visible tasks</small></div><progress max="100" value="${completed}" aria-label="Project progress"></progress></div>`+
  (project.note?`<p>${e(project.note)}</p>`:'')+`<article class="panel">${projectTabs}${content[projectTab]}</article>`;
 }
@@ -154,7 +154,7 @@ function operationsAction(act,key){
  if(act==='ops-backup'&&isSuperAdmin()){downloadBackup();return}
  if(act==='ops-leave'){const item=(data.requests||[]).find(request=>request.id===key&&request.status==='Approved');if(item)readRecord(e(item.owner)+' · Approved leave','<p>'+e(item.start+' – '+item.end)+'</p>');return}
  if(act==='ops-project-tab'){projectTab=key;renderProjects();return}
- if(act==='ops-project'){if(modal.open)modal.close();projectSelection=key;projectTab='Tasks';page='Projects';render();return}
+ if(act==='ops-project'){if(modal.open)modal.close();projectReturnPage=page==='My To-dos'?'My To-dos':'';projectSelection=key;projectTab='Tasks';page='Projects';render();return}
  if(act==='ops-view'){projectView=key;renderProjects();return}
  if(act==='ops-milestone'&&!isEmployee()){
   const item=data.projects.find(project=>project.id===projectSelection)?.milestones.find(milestone=>milestone.id===key);

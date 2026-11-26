@@ -22,3 +22,25 @@ function personalWorkQueues(state,name,today){
  const sort=(a,b)=>(a.due||'9999').localeCompare(b.due||'9999')||(rank[a.priority]??2)-(rank[b.priority]??2);
  return {'Next up':mine.filter(task=>['To do','Rework'].includes(task.status)).sort(sort),'In progress':mine.filter(task=>task.status==='In progress').sort(sort),Waiting:mine.filter(task=>['Blocked','On hold','In review'].includes(task.status)).sort(sort),Completed:mine.filter(task=>task.status==='Done').sort((a,b)=>(Number(b.completedAt)||0)-(Number(a.completedAt)||0))};
 }
+
+// A personal workload contains one entry per project, plus individual tasks.
+function personalTodoSummary(state,name){
+ const mine=(state.tasks||[]).filter(task=>assignedTo(task,name));
+ const projects=new Map((state.projects||[]).map(project=>[project.id,project]));
+ const onboarding=(state.projects||[]).find(project=>project.id==='expert-onboarding'||project.name?.trim().toLowerCase()==='expert onboarding');
+ const groups=new Map(),individual=[];
+ for(const task of mine){
+  const project=projects.get(task.projectId)||(task.lead?(onboarding||{id:'',name:'Expert Onboarding'}):null);
+  if(!project){individual.push(task);continue}
+  const key=project.id||'lead-work';
+  if(!groups.has(key))groups.set(key,{project,tasks:[]});
+  groups.get(key).tasks.push(task);
+ }
+ const summaries=[...groups.values()].map(group=>{
+  const pending=group.tasks.filter(task=>task.status!=='Done'),done=group.tasks.length-pending.length;
+  const dates=pending.map(task=>task.due).filter(Boolean).sort();
+  const status=!pending.length?'Done':pending.some(task=>task.status==='In progress')?'In progress':pending.every(task=>task.status==='In review')?'In review':pending.every(task=>['On hold','Blocked'].includes(task.status))?'On hold':'To do';
+  return {...group,pending:pending.length,done,due:dates[0]||'',status,ongoing:group.tasks.some(task=>task.lead||task.repeat&&task.repeat!=='None')};
+ }).sort((a,b)=>(a.status==='Done')-(b.status==='Done')||(a.due||'9999').localeCompare(b.due||'9999')||String(a.project.name).localeCompare(String(b.project.name)));
+ return {projects:summaries,tasks:individual.sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'))};
+}
