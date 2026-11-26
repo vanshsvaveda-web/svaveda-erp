@@ -233,10 +233,10 @@ function renderHome(open,unassigned,due){
   ['Awaiting review',reviewRows().length,'Review Queue','green','›']
  ];
  const date=new Intl.DateTimeFormat('en-IN',{dateStyle:'full',timeZone:'Asia/Kolkata'}).format(new Date());
- ui.innerHTML=`<div class="overview-heading"><div><div class="day-date">${e(date)}</div><h1>Workspace overview</h1></div><div class="actions">${btn('Review queue','nav','Review Queue')}${btn('New task','task')}${btn('＋ Quick capture','quick-lead','',true)}</div></div>
+ ui.innerHTML=`<div class="overview-heading"><div><div class="day-date">${e(date)}</div><h1>Workspace overview</h1></div><div class="actions">${btn(workspaceIcon('calendar')+' Calendar','nav','Calendar')}${btn('Review queue','nav','Review Queue')}${btn('New task','task')}${btn('＋ Quick capture','quick-lead','',true)}</div></div>
  <div class="snapshot">${bars.map(([label,value,target,color,icon])=>`<button class="snapshot-card" data-act="home-link" data-key="${target}" data-label="${label}"><span class="snapshot-icon ${color}" aria-hidden="true">${icon}</span><span class="snapshot-label">${label}</span><strong>${value}</strong><span class="snapshot-arrow" aria-hidden="true">›</span></button>`).join('')}</div>
  <div class="split home-columns"><div>${panel('Team tasks',taskRows(tasks.slice(0,6))+`<div class="panel-foot">${btn('View tasks','nav','Tasks')}</div>`)}${panel('Expert follow-ups',followUps.slice(0,6).map(l=>listItem(l.name,l.owner||'Unassigned',btn('Follow up','outcome',l.id))).join('')||empty('No follow-ups due.'))}</div>
- <div>${notificationPanel()}${isFounder()?'':panel('Attendance',attendanceCard())}${panel('Today’s meetings',meetings.map(item=>listItem(item.title,[eventTime(item.time),item.owner].filter(Boolean).join(' · '),btn('Open','event',item.id))).join('')||empty('No meetings today.'))}</div></div>`;
+ <div>${notificationPanel()}${isFounder()?'':panel('Attendance',attendanceCard())}${panel('Today’s meetings',(meetings.map(item=>listItem(item.title,[eventTime(item.time),item.owner].filter(Boolean).join(' · '),btn('Open','event',item.id))).join('')||empty('No meetings today.'))+`<div class="panel-foot">${btn('Open calendar','nav','Calendar')}</div>`)}</div></div>`;
 
 }
 
@@ -282,7 +282,7 @@ function renderWorkspace(){
  $('#subnav').hidden=true;
  $('#crumb').textContent=module.name===page?page:module.name+' / '+page;
  const open=data.tasks.filter(t=>t.status!=='Done'), unassigned=data.leads.filter(l=>!l.owner), due=data.leads.filter(l=>l.due&&l.due<=day()&&!['Do not contact','Not interested','Onboarded','Invalid number'].includes(l.status));
- if(page==='Calendar')page='My Day';
+ if(page==='Calendar'){ui.innerHTML='';calendar();return}
  if(page==='My Day'||page==='Overview'&&isEmployee()){renderPersonal();ui.insertAdjacentHTML('beforeend',`<details id="calendar-detail" class="day-secondary" ${fullCalendarOpen?'open':''}><summary>Full calendar</summary><div id="my-calendar"></div></details>`);
   $('#calendar-detail').ontoggle=event=>{fullCalendarOpen=event.target.open};
   calendar();return}
@@ -499,6 +499,7 @@ document.addEventListener('click',async ev=>{
  if(act==='template'&&!isEmployee()){chooseTemplate(key);return}
  if(act==='personal-tasks'||act==='personal-lead-tasks'){personalTaskScope=true;taskFilter=key;page=act==='personal-lead-tasks'?'Lead Tasks':'Tasks';render();return}
  if(act==='personal-calendar'||act==='nav'&&key==='Calendar'){
+  if(isFounder()){closeNavigation();page='Calendar';calendarDate=agendaDate||day();render();return}
   page='My Day';fullCalendarOpen=true;
   calendarDate=agendaDate||day();
   render();$('#calendar-detail').scrollIntoView({block:'start'});return
