@@ -11,6 +11,7 @@ export default {
     const path = original.searchParams.get('route') || original.pathname;
     const url = new URL(original.origin);
     url.pathname = path;
+    const sessionCookies=[];
     try {
       if (path === '/api/health' && request.method === 'GET') {
         try {
@@ -43,7 +44,6 @@ export default {
       const headers = new Headers(request.headers);
       headers.delete('oai-authenticated-user-id');
       headers.delete('oai-authenticated-user-email');
-      const sessionCookies=[];
       if(path==='/'||path.startsWith('/api/')){
         const user=await identity(request,sessionCookies);
         if (!user) return withSessionCookies(path==='/'?loginPage():Response.json({error:'Sign in at the workspace home page.'},{status:401,headers:{'Cache-Control':'no-store'}}),sessionCookies);
@@ -61,7 +61,7 @@ export default {
       return withSessionCookies(response,sessionCookies);
     }catch(error){
       console.error('Vercel ERP request failed', error.code || error.name, error.message?.split('\n')[0]?.replace(/postgres(?:ql)?:\/\/\S+/g,'[connection redacted]'));
-      return new Response('Workspace service unavailable.',{status:503,headers:{'Cache-Control':'no-store'}});
+      return withSessionCookies(new Response('Workspace service unavailable.',{status:503,headers:{'Cache-Control':'no-store'}}),sessionCookies);
     }
   }
 };
