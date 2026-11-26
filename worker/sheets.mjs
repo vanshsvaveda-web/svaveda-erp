@@ -275,7 +275,7 @@ async function syncSheetLead(access,env,id){
     if(error){
       const attempts=job.attempts+1;
       access.state.sheetQueue[id]={...job,attempts,nextAt:Date.now()+Math.min(3600000,30000*2**Math.min(attempts,7)),error:error.message.slice(0,250)};
-    }else delete access.state.sheetQueue[id];
+    }else {delete access.state.sheetQueue[id];if(lead)lead.sheetWrittenAt=Date.now();}
     await env.DB.prepare('UPDATE workspace_state SET revision = revision + 1, payload = ?, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = ? AND revision = ?')
       .bind(JSON.stringify(access.state),access.workspace,access.revision).run();
   };

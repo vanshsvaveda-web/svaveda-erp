@@ -98,7 +98,7 @@ const area=(label,name,value='')=>`<label>${label}<textarea name="${name}">${e(v
 function assigneePicker(record){
  const selected=assignees(record);
  const people=[...new Set([...selected,currentName,...data.people.map(p=>p.name),...(roleSeats||[]).filter(p=>p.email).map(p=>p.name)].filter(Boolean))];
- return `<fieldset class="assignee-picker"><legend>Assign to</legend>${people.map(name=>`<label><input type="checkbox" name="owners" value="${e(name)}" ${selected.includes(name)?'checked':''}>${e(name)}</label>`).join('')}</fieldset>`;
+ return `<fieldset class="assignee-picker"><legend>Assign to · first person is responsible</legend>${people.map(name=>`<label><input type="checkbox" name="owners" value="${e(name)}" ${selected.includes(name)?'checked':''}>${e(name)}</label>`).join('')}<label class="responsible-picker">Responsible for next step<select name="responsible">${selected.map(name=>'<option>'+e(name)+'</option>').join('')||'<option value="">Choose assignees above</option>'}</select></label></fieldset>`;
 }
 const assigneeLinks=record=>assignees(record).map(ownerLink).join(', ')||'Unassigned';
 const btn=(label,act,key='',primary=false)=>`<button type="button" class="${primary?'primary':''}" data-act="${act}" data-key="${e(key)}">${label}</button>`;
@@ -143,13 +143,15 @@ function form(title,fields,submit,handler,size='regular'){
    if(event.currentTarget.querySelector('.assignee-picker')) fields.owners=values.getAll('owners');
    const command=await handler(fields);
    await save(command);
-   modal.close();render();notify(Object.keys(data.sheetQueue||{}).length?'Saved · Sheet updates queued':'Saved');
+   if(command?.type==='work-comment'){modal.close();render();openWorkDiscussion(command.kind+':'+command.id);notify('Update posted');return}
+   modal.close();render();notify(data.leads.some(lead=>['queued','retrying'].includes(lead.syncState?.status))?'Saved to ERP · Sheet changes sync automatically':'Saved to ERP');
   }catch(problem){
    restoreDraft(data,committed);
    error.textContent=problem.message;
    error.scrollIntoView({block:'nearest'});
   }finally{busy=false;button.disabled=false;button.textContent=originalLabel}
  };
+ bindResponsiblePicker();
  modal.showModal();
  modal.querySelector('.popup-fields input:not([type=file]),.popup-fields select,.popup-fields textarea')?.focus();
 }
@@ -173,43 +175,38 @@ function attendanceCard(){
 const taskRows=tasks=>tasks.length?tasks.map(t=>`<div class="item task-line"><div><button class="link task-name" data-act="task" data-key="${e(t.id)}">${e(t.title)}</button><small>${[assigneeLabel(t)||'Unassigned',t.due?'Due '+t.due:'No due date',t.priority].filter(Boolean).map(e).join(' · ')}</small></div>${pill(t.status)}</div>`).join(''):empty('No tasks in this view.');
 let dayTaskQueue, agendaDate, fullCalendarOpen=false, dayScheduleOpen=false;
 function renderPersonal(){
- const today=day(), mine=data.tasks.filter(task=>assignedTo(task,currentName));
- const active=mine.filter(task=>!['Done','In review'].includes(task.status));
- const overdue=active.filter(task=>task.due&&task.due<today);
- const current=active.filter(task=>!overdue.includes(task)&&(task.status==='Rework'||!task.due||task.due===today));
- const upcoming=active.filter(task=>task.due>today&&task.status!=='Rework').sort((a,b)=>a.due.localeCompare(b.due));
- const completed=mine.filter(task=>task.status==='Done').sort((a,b)=>(Number(b.completedAt)||0)-(Number(a.completedAt)||0));
- const queues={Overdue:overdue,Today:current,Upcoming:upcoming,Review:mine.filter(task=>task.status==='In review'),Completed:completed};
- dayTaskQueue||=overdue.length?'Overdue':'Today';
- const visible=queues[dayTaskQueue];
- const operations=visible.filter(task=>taskSection(task)==='Operations'), leadTasks=visible.filter(task=>taskSection(task)==='Sales'), marketing=visible.filter(task=>taskSection(task)==='Marketing');
- const followUps=data.leads.filter(lead=>assignedTo(lead,currentName)&&lead.due&&lead.due<=today&&!['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status));
- const date=calLabel(today,{dateStyle:'full'});
- const tabs=Object.entries(queues).map(([label,items])=>`<button data-act="day-work-filter" data-key="${label}" aria-pressed="${dayTaskQueue===label}">${label} <span class="tab-count">${items.length}</span></button>`).join('');
- const summaries=[['Today',current.length,'calendar','blue'],['Overdue',overdue.length,'clock','amber'],['Review',queues.Review.length,'review','violet'],['Completed',completed.length,'check','green']];
- const stats=`<div class="snapshot day-summaries">${summaries.map(([label,count,icon,tone])=>`<button class="snapshot-card day-stat" data-act="day-work-filter" data-key="${label}" aria-pressed="${dayTaskQueue===label}"><span class="snapshot-icon ${tone}">${workspaceIcon(icon)}</span><span class="snapshot-label">${label==='Review'?'Awaiting review':label==='Completed'?'Completed tasks':label==='Today'?'Today’s focus':'Overdue tasks'}</span><strong>${count}</strong><span class="stat-caption">${label==='Completed'?'Your completed work':label==='Overdue'?'Needs your attention':label==='Review'?'Submitted for approval':'Ready to work on'}</span></button>`).join('')}</div>`;
- const groups=[['Operations',operations,'tasks','personal-tasks'],['Marketing',marketing,'marketing','nav'],['Sales & lead generation',leadTasks,'sales','personal-lead-tasks']];
- const work=groups.filter(([,items])=>items.length).map(([name,items,icon,target])=>`<div class="work-section"><div class="work-section-heading"><span>${workspaceIcon(icon)}<h3>${name}</h3><small>${items.length}</small></span><button class="link" data-act="${target}" data-key="${target==='nav'?'Marketing Tasks':'Mine'}">View all</button></div>${items.map(dayTaskRow).join('')}</div>`).join('')||`<div class="work-empty">${workspaceIcon(dayTaskQueue==='Completed'?'check':'tasks')}<h3>${dayTaskQueue==='Completed'?'Your finished work will appear here':'You’re clear in this view'}</h3><p>${dayTaskQueue==='Review'?'Tasks you submit will appear here while awaiting approval.':'Choose another tab to see the rest of your work.'}</p></div>`;
- ui.innerHTML=`<div class="personal-heading"><div><div class="day-date">${e(date)} · IST</div><h1>${greeting()}, ${e(currentName)}<span class="greeting-dot">.</span></h1><p>Your work, with a little more clarity.</p></div><div class="actions">${btn(workspaceIcon('calendar')+' Calendar','personal-calendar')}${isEmployee()?btn('Request leave','ops-request','Leave'):btn('＋ Quick capture','quick-lead','',true)+btn('New task','task')}</div></div>
- ${stats}
- <div class="split home-columns day-workspace"><div>
- <article class="panel work-panel"><div class="panel-title"><div><h2>My work</h2><p>One place for everything assigned to you.</p></div><span class="workspace-count">${mine.length} tasks</span></div><div class="toolbar filter-tabs work-tabs" aria-label="My work filters">${tabs}</div>${work}</article>
- ${followUps.length?panel('Follow-ups due',followUps.slice(0,6).map(lead=>listItem(lead.name,'Due '+lead.due,btn('Follow up','outcome',lead.id))).join('')):''}
- </div><div class="day-side-column" role="complementary" aria-label="Work updates">${notificationPanel()}</div></div>
- <div class="day-utilities">
- <details class="day-secondary day-schedule" id="day-schedule" ${dayScheduleOpen?'open':''}><summary><span>${workspaceIcon('calendar')} My schedule</span><small>Calendar and tasks</small></summary>${dayAgenda()}</details>
- <details class="day-secondary day-requests"><summary><span>${workspaceIcon('review')} Requests${isEmployee()?'':' and reviews'}</span><small>${isEmployee()?'Leave and requests':reviewRows().length+' awaiting review'}</small></summary>
- <div class="split"><div>${personalRequests()}</div><div>${!isEmployee()?panel('Pending reviews',reviewRows().slice(0,3).map(item=>listItem(item.title,item.owner||'Unassigned',btn('Review','ops-decision',item.kind+'|'+item.id))).join('')||empty('Nothing waiting for review.')):''}</div></div></details></div>`;
- $('#day-schedule').ontoggle=event=>{dayScheduleOpen=event.target.open};
+ const today=day(),queues=personalWorkQueues(data,currentName,today);
+ if(!queues[dayTaskQueue])dayTaskQueue='Next up';
+ const all=queues[dayTaskQueue],limit=personalShowAll?all.length:6,visible=all.slice(0,limit);
+ const groups=new Map();
+ for(const task of visible){const key=task.projectId||'';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(task)}
+ const work=[...groups].map(([key,tasks])=>{
+  const project=data.projects.find(item=>item.id===key);
+  return `<section class="personal-project"><div class="personal-project-heading"><h3>${e(project?.name||'Individual tasks')}</h3>${project?btn('Project','ops-project',project.id):''}</div>${tasks.map(dayTaskRow).join('')}</section>`;
+ }).join('')||`<div class="work-empty">${workspaceIcon(dayTaskQueue==='Completed'?'check':'tasks')}<h3>${dayTaskQueue==='Completed'?'No completed tasks yet':'Nothing in '+e(dayTaskQueue.toLowerCase())}</h3><p>Your assigned work appears here automatically.</p></div>`;
+ const activeLeadTasks=new Set(data.tasks.filter(task=>assignedTo(task,currentName)&&task.status!=='Done').map(task=>task.lead));
+ const looseFollowUps=data.leads.filter(lead=>assignedTo(lead,currentName)&&!activeLeadTasks.has(lead.id)&&lead.due&&lead.due<=today&&!['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status));
+ const captures=data.leads.filter(lead=>lead.researchReturnTo===currentName);
+ const meetings=data.events.filter(event=>event.date===today&&(!event.owner||assignedTo(event,currentName)));
+ const ownAlerts=activityAlerts(data).filter(item=>personalNotification(item));
+ const unread=ownAlerts.filter(item=>!readNotifications().has(item.id)).length;
+ const upcoming=queues['Next up'].filter(task=>task.due>today).length;
+ ui.innerHTML=`<div class="personal-heading"><div><div class="day-date">${e(calLabel(today,{weekday:'long',day:'numeric',month:'long'}))} · IST</div><h1>${greeting()}, ${e(currentName)}<span class="greeting-dot">.</span></h1><p>Your tasks. Your next steps. Your day.</p></div><div class="actions">${btn('Calendar','personal-calendar')}${isEmployee()?'':btn('＋ Quick capture','quick-lead','',true)}${isFounder()?btn('Company overview','nav','Overview'):''}</div></div>
+ <div class="personal-context"><span>${queues['In progress'].length} in progress · ${queues['Next up'].filter(task=>task.due&&task.due<today).length} overdue${upcoming?' · '+upcoming+' upcoming':''}</span>${btn(unread?unread+' personal '+(unread===1?'update':'updates'):'My updates','personal-updates')}</div>
+ <div class="personal-layout"><article class="panel work-panel"><div class="toolbar filter-tabs work-tabs" aria-label="My work filters">${Object.entries(queues).map(([label,items])=>`<button data-act="day-work-filter" data-key="${label}" aria-pressed="${label===dayTaskQueue}">${label} <span class="tab-count">${items.length}</span></button>`).join('')}</div>${work}${all.length>6?'<div class="panel-foot">'+btn(personalShowAll?'Show fewer':'Show all '+all.length,'personal-more')+'</div>':''}${looseFollowUps.length&&dayTaskQueue==='Next up'?'<details class="personal-extra"><summary>Other follow-ups due · '+looseFollowUps.length+'</summary>'+looseFollowUps.slice(0,6).map(lead=>listItem(lead.name,'Follow-up #'+(loggedFollowUps(lead).length+1)+' · '+lead.action,btn('Follow up','outcome',lead.id))).join('')+'</details>':''}</article>
+ <aside class="personal-sidebar">${panel('My schedule today',meetings.slice(0,3).map(event=>listItem(event.title,eventTime(event.time)||'All day',btn('Open','event',event.id))).join('')||empty('No meetings today.'))}${captures.length?'<details class="panel personal-extra"><summary>Waiting for expert details · '+captures.length+'</summary>'+captures.slice(0,5).map(lead=>listItem(lead.name,'With '+assigneeLabel(lead),btn('View','lead',lead.id))).join('')+'</details>':''}${isEmployee()?'<details class="panel personal-extra"><summary>My requests</summary>'+personalRequests()+'</details>':''}</aside></div>`;
 }
+let personalShowAll=false,personalNotifications=false;
 
 function dayTaskRow(task){
  const running=Boolean(task.timer),done=task.status==='Done';
- const canStart=['To do','In progress','Rework'].includes(task.status);
+ const canStart=!task.lead&&['To do','In progress','Rework'].includes(task.status);
  const project=data.projects.find(item=>item.id===task.projectId);
  const detail=done?[task.completedAt?'Completed '+calendarStamp(task.completedAt):'Completed',task.completedBy?'by '+task.completedBy:'']:[task.due===day()?'Due today':task.due?'Due '+calLabel(task.due,{day:'numeric',month:'short'}):'No due date',task.priority];
- const owners=assignees(task);
- return `<div class="item task-line ${done?'task-finished':''}"><span class="task-state-icon ${done?'is-done':''}">${workspaceIcon(done?'check':'tasks')}</span><div class="task-line-main"><button class="link task-name" data-act="task" data-key="${e(task.id)}">${e(task.title)}</button><div class="task-metadata">${project?'<span class="project-chip">'+e(project.name)+'</span>':''}<small class="${!done&&task.due&&task.due<day()?'task-due-late':''}">${e(detail.filter(Boolean).join(' · '))}</small></div></div><div class="task-owners" aria-label="${e(owners.join(', '))}">${owners.slice(0,3).map(owner=>'<span title="'+e(owner)+'">'+e(owner.split(/\s+/).slice(0,2).map(part=>part[0]).join(''))+'</span>').join('')}${owners.length>3?'<span>+'+(owners.length-3)+'</span>':''}</div><div class="actions">${pill(task.status)}${canStart?btn(running?'Pause':task.status==='In progress'?'Resume':'Start','day-task-timer',task.id):''}${canStart?btn(isEmployee()?'Submit work':'Finish','task',task.id):''}</div></div>`;
+ const owners=assignees(task),lead=task.lead&&data.leads.find(item=>item.id===task.lead);
+ if(lead)detail.push(lead.researchReturnTo?'Research handoff':'Follow-up #'+(loggedFollowUps(lead).length+1));
+ if(owners.length>1)detail.push('Responsible: '+owners[0]);
+ return `<div class="item task-line ${done?'task-finished':''}"><span class="task-state-icon ${done?'is-done':''}">${workspaceIcon(done?'check':'tasks')}</span><div class="task-line-main"><button class="link task-name" data-act="${lead&&!done?'outcome':'task'}" data-key="${e(lead&&!done?lead.id:task.id)}">${e(task.title)}</button><div class="task-metadata">${project?'<span class="project-chip">'+e(project.name)+'</span>':''}<small class="${!done&&task.due&&task.due<day()?'task-due-late':''}">${e(detail.filter(Boolean).join(' · '))}</small></div></div><div class="task-owners" aria-label="${e(owners.join(', '))}">${owners.slice(0,3).map(owner=>'<span title="'+e(owner)+'">'+e(owner.split(/\s+/).slice(0,2).map(part=>part[0]).join(''))+'</span>').join('')}${owners.length>3?'<span>+'+(owners.length-3)+'</span>':''}</div><div class="actions">${pill(task.status)}${lead&&!done?btn(lead.researchReturnTo?'Complete details':'Follow up','outcome',lead.id):''}${canStart?btn(running?'Pause':task.status==='In progress'?'Resume':'Start','day-task-timer',task.id):''}${canStart?btn(isEmployee()?'Submit work':'Finish','task',task.id):''}</div></div>`;
 }
 function dayAgenda(){
  const today=day();
@@ -233,7 +230,7 @@ function renderHome(open,unassigned,due){
   ['Awaiting review',reviewRows().length,'Review Queue','green','›']
  ];
  const date=new Intl.DateTimeFormat('en-IN',{dateStyle:'full',timeZone:'Asia/Kolkata'}).format(new Date());
- ui.innerHTML=`<div class="overview-heading"><div><div class="day-date">${e(date)}</div><h1>Workspace overview</h1></div><div class="actions">${btn(workspaceIcon('calendar')+' Calendar','nav','Calendar')}${btn('Review queue','nav','Review Queue')}${btn('New task','task')}${btn('＋ Quick capture','quick-lead','',true)}</div></div>
+ ui.innerHTML=`<div class="overview-heading"><div><div class="day-date">${e(date)}</div><h1>Workspace overview</h1></div><div class="actions">${btn('My Day','nav','My Day')}${btn(workspaceIcon('calendar')+' Calendar','nav','Calendar')}${btn('Review queue','nav','Review Queue')}${btn('New task','task')}${btn('＋ Quick capture','quick-lead','',true)}</div></div>
  <div class="snapshot">${bars.map(([label,value,target,color,icon])=>`<button class="snapshot-card" data-act="home-link" data-key="${target}" data-label="${label}"><span class="snapshot-icon ${color}" aria-hidden="true">${icon}</span><span class="snapshot-label">${label}</span><strong>${value}</strong><span class="snapshot-arrow" aria-hidden="true">›</span></button>`).join('')}</div>
  <div class="split home-columns"><div>${panel('Team tasks',taskRows(tasks.slice(0,6))+`<div class="panel-foot">${btn('View tasks','nav','Tasks')}</div>`)}${panel('Expert follow-ups',followUps.slice(0,6).map(l=>listItem(l.name,l.owner||'Unassigned',btn('Follow up','outcome',l.id))).join('')||empty('No follow-ups due.'))}</div>
  <div>${notificationPanel()}${isFounder()?'':panel('Attendance',attendanceCard())}${panel('Today’s meetings',(meetings.map(item=>listItem(item.title,[eventTime(item.time),item.owner].filter(Boolean).join(' · '),btn('Open','event',item.id))).join('')||empty('No meetings today.'))+`<div class="panel-foot">${btn('Open calendar','nav','Calendar')}</div>`)}</div></div>`;
@@ -283,11 +280,9 @@ function renderWorkspace(){
  $('#crumb').textContent=module.name===page?page:module.name+' / '+page;
  const open=data.tasks.filter(t=>t.status!=='Done'), unassigned=data.leads.filter(l=>!l.owner), due=data.leads.filter(l=>l.due&&l.due<=day()&&!['Do not contact','Not interested','Onboarded','Invalid number'].includes(l.status));
  if(page==='Calendar'){ui.innerHTML='';calendar();return}
- if(page==='My Day'||page==='Overview'&&isEmployee()){renderPersonal();ui.insertAdjacentHTML('beforeend',`<details id="calendar-detail" class="day-secondary" ${fullCalendarOpen?'open':''}><summary>Full calendar</summary><div id="my-calendar"></div></details>`);
-  $('#calendar-detail').ontoggle=event=>{fullCalendarOpen=event.target.open};
-  calendar();return}
+ if(page==='My Day'||page==='Overview'&&isEmployee()){renderPersonal();return}
  if(page==='Overview'){
-  renderHome(open,unassigned,due);
+  personalNotifications=false;renderHome(open,unassigned,due);
   return;
  }
  if(page==='Inbox'){renderInbox();return}
@@ -315,9 +310,9 @@ function renderWorkspace(){
   const context=[leadColumn(lead,'Brand / Organisation'),leadColumn(lead,'City'),lead.area].filter(Boolean).join(' · ');
   const due=lead.due?'Due '+lead.due:'';
   return `<tr>${checkbox?`<td><input type="checkbox" aria-label="Select ${e(lead.name)}" data-check="${e(lead.id)}" ${selected.has(lead.id)?'checked':''}></td>`:''}
-  <td><button class="link lead-name" data-act="lead" data-key="${e(lead.id)}">${e(lead.name)}</button>${context||lead.phone?`<small>${e(context||lead.phone)}</small>`:''}</td>
+  <td><button class="link lead-name" data-act="lead" data-key="${e(lead.id)}">${e(lead.name)}</button>${context||lead.phone?`<small>${e(context||lead.phone)}</small>`:''}${leadSyncBadge(lead)}</td>
   <td>${pill(lead.status)}</td><td>${assigneeLinks(lead)}</td>
-  <td>${lead.action?`<strong>${e(lead.action)}</strong><small>${loggedFollowUps(lead).length} follow-ups logged</small>`:'<span class="muted">—</span>'}${due?`<small>${e(due)}</small>`:''}</td>
+  <td>${lead.action?`<strong>${e(lead.action)}</strong><small>Follow-up #${loggedFollowUps(lead).length+1} · ${loggedFollowUps(lead).length} logged</small>`:'<span class="muted">—</span>'}${due?`<small>${e(due)}</small>`:''}</td>
   <td><div class="lead-row-actions">${checkbox?btn(lead.owner?'Reassign':'Assign','assign',lead.id):''}${btn('Follow up','outcome',lead.id)}</div></td></tr>`;
  });
  const caption=visible.length?`Showing ${start+1}–${start+shown.length} of ${visible.length}`:'0 leads';
@@ -484,7 +479,7 @@ document.addEventListener('click',async ev=>{
  if(b.dataset.notificationIds||b.dataset.notificationId){beginNotificationHistory();if(notificationOverlay.open){notificationOverlay.close();page=homePage();render();}}
  if(b.dataset.notificationIds){markNotifications(JSON.parse(b.dataset.notificationIds));b.closest('.notification-row')?.removeAttribute('data-unread');}
  if(b.dataset.notificationId){markNotifications([b.dataset.notificationId]);b.closest('.notification-row')?.removeAttribute('data-unread');}
- if(act==='notifications-read'){markNotifications(activityAlerts(data).map(item=>item.id));render();return;}
+ if(act==='notifications-read'){markNotifications(activityAlerts(data).filter(item=>!personalNotifications||personalNotification(item)).map(item=>item.id));render();if(notificationOverlay.open)paintNotifications();return;}
  if(act==='desktop-enable'){void enableDesktopNotifications();return;}
  if(act==='sheet-disconnect'&&isSuperAdmin()){
   form('Disconnect Google Sheet','<p>Stop automatic pulls from this Sheet. Imported leads stay in the workspace.</p>','Disconnect',()=>{delete data.sheetLink;delete data.sheetSyncedAt;delete data.sheetSync;sheetError=''});
@@ -492,6 +487,7 @@ document.addEventListener('click',async ev=>{
  }
  if(act==='mobile-search'){closeNavigation();openJump();return}
  if(act==='mobile-more'){$('#nav-toggle').click();return}
+ if(act==='notification-filter'){notificationFilter=key;paintNotifications();return}
  if(act==='notification-home'){closeNotificationsHome();return}
  if(act==='desktop-inbox'){openNotifications();return}
 
@@ -499,12 +495,16 @@ document.addEventListener('click',async ev=>{
  if(act==='template'&&!isEmployee()){chooseTemplate(key);return}
  if(act==='personal-tasks'||act==='personal-lead-tasks'){personalTaskScope=true;taskFilter=key;page=act==='personal-lead-tasks'?'Lead Tasks':'Tasks';render();return}
  if(act==='personal-calendar'||act==='nav'&&key==='Calendar'){
-  if(isFounder()||calendarPhone()){closeNavigation();page='Calendar';calendarDate=agendaDate||day();render();window.scrollTo({top:0});return}
+  {calendarReturnPage=page==='My Day'?'My Day':isFounder()?'Overview':'My Day';closeNavigation();page='Calendar';calendarDate=agendaDate||day();render();window.scrollTo({top:0});return}
   page='My Day';fullCalendarOpen=true;
   calendarDate=agendaDate||day();
   render();$('#calendar-detail').scrollIntoView({block:'start'});return
  }
- if(act==='day-work-filter'){dayTaskQueue=key;render();return}
+ if(act==='day-work-filter'){dayTaskQueue=key;personalShowAll=false;render();return}
+ if(act==='personal-more'){personalShowAll=!personalShowAll;render();return}
+ if(act==='personal-updates'){personalNotifications=true;openNotifications();return}
+ if(act==='work-discussion'){openWorkDiscussion(key);return}
+ if(act==='message-thread'){if(modal.open)modal.close();page='Messages';if(!inbox)await refreshMessages({paint:false});openConversation(key);return}
  if(act==='agenda-date'||act==='agenda-week'){
   agendaDate=act==='agenda-date'?key:calDay(agendaDate||day(),Number(key));render();return
  }
@@ -562,13 +562,13 @@ document.addEventListener('click',async ev=>{
  const links=btn('Follow up','outcome',l.id);
  const handoff=l.researchReturnTo?'<p>Details assigned to '+e(assigneeLabel(l))+' · Returns to '+e(l.researchReturnTo)+'</p>':
   l.researchNotes?'<p><strong>Research notes:</strong> '+e(l.researchNotes)+'</p>':'';
- const history=key?handoff+followUpHistory(l):'';
+ const history=key?leadSyncBadge(l)+handoff+followUpHistory(l):'';
  if(isEmployee()){readRecord(e(l.name),links+'<p>'+e([l.status,l.action,l.due].filter(Boolean).join(' · '))+'</p><p>'+e(l.instructions)+'</p>'+leadSheetDetails(l)+history);return}
- form(key?'Edit expert lead':'Add expert lead',input('Name','name',l.name,'text',true)+input('Phone','phone',l.phone,'tel',!l.quickCaptured||Boolean(l.sheetSnapshot?.phone))+input('Instagram','instagram',l.instagram)+input('Specialization','area',l.area)+select('ERP stage','status',options(statuses,l.status))+assigneePicker(l)+input('Next action','action',l.action)+input('Due date','due',l.due,'date')+area('Instructions','instructions',l.instructions)+
+ form(key?'Edit expert lead':'Add expert lead',input('Name','name',l.name,'text',true)+input('Phone','phone',l.phone,'tel',!l.quickCaptured||Boolean(l.sheetSnapshot?.phone))+input('Instagram','instagram',l.instagram)+assigneePicker(l)+input('Next action','action',l.action)+input('Due date','due',l.due,'date')+'<details class="task-options"><summary>More details and Sheet fields</summary>'+input('Specialization','area',l.area)+select('ERP stage','status',options(statuses,l.status))+area('Instructions','instructions',l.instructions)+
  (data.sheetLink||l.sheetSnapshot?select('Lead Status','sheetStage',options(['','Followup','Communication','Call Confirmed','Call Concluded'],l.sheetStage))+
  select('Pipeline Status','sheetPipeline',options(['','Hot','In Progress','Cold'],l.sheetPipeline))+
- select('Interest','sheetInterest',options(['','Yes','No','Maybe'],l.sheetInterest)):'')+leadSheetDetails(l)+history,
- 'Save lead',v=>{if(v.owners.length&&!v.action)v.action='Initial call';if(v.owners.length&&!v.due)v.due=day();setLead(l,v)});
+ select('Interest','sheetInterest',options(['','Yes','No','Maybe'],l.sheetInterest)):'')+leadSheetDetails(l)+'</details>'+history,
+ 'Save lead',v=>{if(v.owners.length&&!v.action)v.action='Initial call';if(v.owners.length&&!v.due)v.due=day();v.owners=responsibleFirst(v.owners,v.responsible);delete v.responsible;setLead(l,v)});
 
  }
  if(act==='assign'){
@@ -579,7 +579,7 @@ document.addEventListener('click',async ev=>{
  if(v.action==='Custom'&&!v.custom.trim())throw Error('Enter a custom task title.');
  const eligible=leads.filter(l=>!['Do not contact','Not interested','Invalid number','Onboarded'].includes(l.status));
  if(!eligible.length)throw Error('These leads are closed to outreach.');
- eligible.forEach(l=>{setAssignees(l,v.owners);Object.assign(l,{action:v.action==='Custom'?v.custom.trim():v.action,due:v.due,priority:v.priority,instructions:v.instructions});makeTask(l)});
+ eligible.forEach(l=>{setAssignees(l,responsibleFirst(v.owners,v.responsible));Object.assign(l,{action:v.action==='Custom'?v.custom.trim():v.action,due:v.due,priority:v.priority,instructions:v.instructions});makeTask(l)});
  selected.clear();notify(eligible.length+' assigned'+(eligible.length<leads.length?' · Closed leads skipped':''))
  });
  }
@@ -589,41 +589,46 @@ document.addEventListener('click',async ev=>{
  const t=data.tasks.find(x=>x.id===key)||{id:id(),status:'To do',priority:'Medium',start:day(),due:day(),projectId:page==='Projects'?projectSelection:'',department:page==='Marketing Tasks'?'Marketing':undefined};
  const researchLead=t.status!=='Done'&&t.lead&&data.leads.find(lead=>lead.id===t.lead&&lead.researchReturnTo&&assignedTo(lead,currentName));
  if(researchLead){openLeadResearch(researchLead);return;}
+ if(t.lead&&t.status!=='Done'&&data.leads.some(lead=>lead.id===t.lead)){openLeadOutcome(t.lead);return;}
  if(isEmployee()){
-  if(t.status==='Done'){readRecord(e(t.title),'<p>Completed</p><p>'+e(t.note)+'</p>'+download(t.file)+download(t.submission));return}
+  if(t.status==='Done'){readRecord(e(t.title),'<p>Completed</p><p>'+e(t.note)+'</p>'+download(t.file)+download(t.submission)+discussionPreview('task',t));return}
   const summary='<p class="task-summary">'+e([t.due?'Due '+t.due:'No due date',t.status].join(' · '))+'</p>'+
    (t.note?'<p class="task-summary">'+e(t.note)+'</p>':'')+download(t.file);
   form(e(t.title),summary+taskChecklist(t)+area('Note (optional)','comment')+
-   '<details class="task-options"><summary>Attach file (optional)</summary><div class="task-options-grid">'+
-   input('File','submission','','file')+download(t.submission)+'</div></details>'+
+   '<details class="task-options"><summary>Results and attachment (optional)</summary><div class="task-options-grid">'+
+   taskResultFields(t)+input('File','submission','','file')+download(t.submission)+'</div></details>'+
    '<input type="hidden" name="status" value="'+e(t.status==='Rework'?'In progress':t.status)+'">',
    t.status==='In review'?'Update submission':'Submit work',async value=>{
    t.checklist=(t.checklist||[]).map((item,i)=>({...item,done:value['step'+i]==='on'}));
    const file=await attach(value.submission);if(file)t.submission=file;
    if(value.status==='In review'&&t.timer){t.elapsed=(t.elapsed||0)+Math.max(0,Date.now()-t.timer);delete t.timer}
-   t.status=value.status;
+   t.status=value.status;readTaskResultInputs(t,value);
    if(value.comment.trim())(t.comments||=[]).push(value.comment.trim());
   },'compact');
   const primarySubmit=modal.querySelector('.popup-actions .primary');
   primarySubmit.dataset.taskStatus='In review';
   if(t.status!=='In review')primarySubmit.before(taskFooterAction('Save progress'));
-  return;
+  addDiscussionAction('task',t.id);return;
  }
  const fields=input('Task name','title',t.title,'text',true)+assigneePicker(t)+input('Due date','due',t.due,'date')+
   area('Note (optional)','note',t.note)+
   '<details class="task-options"><summary>Project and priority</summary><div class="task-options-grid">'+
   projectField(t.projectId)+select('Priority','priority',options(['Low','Medium','High','Urgent'],t.priority))+'</div></details>'+
+  '<details class="task-options"><summary>Planning, recurrence and results (optional)</summary><div class="task-options-grid">'+select('Repeat after completion','repeat',options(['None','Daily','Weekly','Monthly'],t.repeat||'None'))+area('Checklist (one per line)','checklistText',(t.checklist||[]).map(item=>item.text).join('\n'))+taskAmount('Estimated hours','hours',t.hours)+taskPlanFields(t)+taskResultFields(t)+'</div></details>'+
   '<input type="hidden" name="status" value="'+e(t.status)+'">';
  form(key?'Task':'New task',fields,'Save task',async v=>{
-  if(t.repeat&&t.repeat!=='None'&&!v.due)throw Error('Set a due date for the recurring task.');
+  if(v.repeat&&v.repeat!=='None'&&!v.due)throw Error('Set a due date for the recurring task.');
   if(v.status==='Done'&&t.timer){t.elapsed=(t.elapsed||0)+Math.max(0,Date.now()-t.timer);delete t.timer}
-  // Only edit the small set of visible fields. Existing metrics, files, recurrence,
-  // checklist, start date and tracking remain intact.
+  // Keep files, start date and tracking intact; optional planning fields stay collapsed.
   Object.assign(t,{title:v.title.trim(),due:v.due,note:v.note,projectId:v.projectId,priority:v.priority,status:v.status});
-  setAssignees(t,v.owners);
+  setAssignees(t,responsibleFirst(v.owners,v.responsible));
+  const oldSteps=new Map((t.checklist||[]).map(item=>[item.text,item.done]));t.checklist=v.checklistText.split('\n').map(text=>text.trim()).filter(Boolean).slice(0,100).map(text=>({text,done:oldSteps.get(text)||false}));
+  for(const field of ['repeat','department','taskType','plannedDate','expectedOutput','kpi','kpiUnit','kpiRollup'])t[field]=v[field];
+  for(const field of ['hours','kpiTarget'])t[field]=v[field]!==''?Number(v[field]):'';readTaskResultInputs(t,v);
   if(!key)data.tasks.unshift(t);
  },'compact');
  if(key&&t.status!=='Done')taskFooterAction('Mark complete','Done',true);
+ if(key)addDiscussionAction('task',t.id);
  }
  if(act==='event'){openEvent(key);return}
  if(act==='project'){openProject(key);return}
@@ -788,7 +793,7 @@ function activityAlerts(state){
   if(mine&&status!=='In review'&&task.due&&task.due<=today)
    add('task-due:'+task.id+':'+task.due,task.due===today?'Task due today':'Task overdue',task.title,0,'task',task.id);
  }
- for(const lead of state.leads.filter(lead=>assignedTo(lead,currentName)&&lead.due&&lead.due<=today&&!['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status)))
+ for(const lead of state.leads.filter(lead=>!state.tasks.some(task=>task.lead===lead.id&&task.status!=='Done'&&assignedTo(task,currentName))&&assignedTo(lead,currentName)&&lead.due&&lead.due<=today&&!['Do not contact','Not interested','Invalid number','Onboarded','Program listed'].includes(lead.status)))
   add('lead:'+lead.id+':'+lead.due,'Follow-up #'+(loggedFollowUps(lead).length+1)+' due',[lead.name,lead.action,'Due '+lead.due].filter(Boolean).join(' · '),0,'outcome',lead.id);
  for(const event of state.events.filter(item=>item.date===today&&item.category!=='Holiday'&&(!item.owner||item.owner===currentName)))
   add('event:'+event.id+':'+event.date,'Scheduled today',event.title,0,'event',event.id);
@@ -797,6 +802,14 @@ function activityAlerts(state){
    add('request:'+request.id+':'+request.status,'Request '+request.status.toLowerCase(),request.kind,request.decisionAt||request.at,'nav','Attendance');
   if(managers&&request.status==='Pending')
    add('review-request:'+request.id,'Request awaiting review',[request.kind,request.owner].filter(Boolean).join(' · '),request.at,'ops-decision','Request|'+request.id);
+ }
+ for(const [kind,records] of [['task',state.tasks],['project',state.projects]])for(const record of records){
+  const mine=kind==='task'?assignedTo(record,currentName):record.owner===currentName||record.members?.includes(currentName);
+  for(const comment of record.discussion||[]){
+   if(comment.actor===currentName||comment.at<cutoff)continue;
+   const mentioned=comment.mentions?.includes(currentName);
+   if(mentioned||mine)add('discussion:'+kind+':'+record.id+':'+comment.id,mentioned?'Mentioned you':'Work discussion updated',[record.title||record.name,comment.actor,comment.text.slice(0,100)].join(' · '),comment.at,'work-discussion',kind+':'+record.id);
+  }
  }
  return [...entries,...messageAlerts].sort((a,b)=>b.at-a.at);
 }
@@ -807,9 +820,18 @@ function readNotifications(){
 function markNotifications(ids){
  try{localStorage.setItem(notificationReadKey(),JSON.stringify([...new Set([...readNotifications(),...ids])].slice(-2000)));}catch{}
 }
+let notificationFilter='All';
+function personalNotification(item,state=data){
+ if(item.id.startsWith('message:'))return true;
+ if(item.act==='work-discussion'){const [kind,id]=item.key.split(':');const record=state[kind==='task'?'tasks':'projects'].find(record=>record.id===id);return kind==='task'?assignedTo(record,currentName):record?.owner===currentName||record?.members?.includes(currentName)}
+ if(state.tasks.some(task=>task.id===item.key&&assignedTo(task,currentName)))return true;
+ if(state.leads.some(lead=>lead.id===item.key&&assignedTo(lead,currentName)))return true;
+ if(item.act==='event')return state.events.some(event=>event.id===item.key&&(!event.owner||assignedTo(event,currentName)));
+ return item.id.startsWith('request:');
+}
 function notificationPanel(full=false){
  const read=readNotifications(), grouped=new Map();
- for(const item of activityAlerts(data)){
+ for(const item of activityAlerts(data).filter(item=>!personalNotifications||personalNotification(item))){
   const key=item.label+'|'+item.act+'|'+item.key;
   const existing=grouped.get(key);
   if(existing){existing.ids.push(item.id);existing.count++;if(!read.has(item.id))existing.unread=true;}
@@ -818,7 +840,9 @@ function notificationPanel(full=false){
  const items=[...grouped.values()].sort((a,b)=>Number(b.unread)-Number(a.unread)||b.at-a.at);
  const needsAction=item=>/^(task-due:|lead:|assigned:|rework:|review:|review-request:)/.test(item.id);
  const unread=items.filter(item=>item.unread).length;
- const rows=items.slice(0,full?100:3);
+ const category=item=>item.id.startsWith('message:')?'Messages':item.label==='Mentioned you'?'Mentions':/^(review:|review-request:|request:)/.test(item.id)?'Reviews':/^(assigned:|rework:)/.test(item.id)?'Assignments':'Updates';
+ const rows=items.filter(item=>!full||notificationFilter==='All'||category(item)===notificationFilter).slice(0,full?100:3);
+ const filters=full?'<div class="notification-filters" aria-label="Notification filters">'+['All','Assignments','Reviews','Mentions','Messages','Updates'].map(label=>'<button data-act="notification-filter" data-key="'+label+'" aria-pressed="'+(notificationFilter===label)+'">'+label+'</button>').join('')+'</div>':'';
  const section=(label,predicate)=>{
   const matches=rows.filter(predicate);if(!matches.length)return '';
   return '<h3 class="notification-section-label">'+label+'</h3>'+matches.map(item=>{
@@ -826,14 +850,14 @@ function notificationPanel(full=false){
    return `<div class="item row notification-row" ${item.unread?'data-unread="true"':''}><div><strong>${e(item.label)}${item.count>1?' · '+item.count:''}</strong><p>${e(description)}</p></div><button type="button" data-act="${item.act}" data-key="${e(item.key)}" data-notification-ids="${e(JSON.stringify(item.ids))}" aria-label="Open ${e(item.label)}: ${e(item.subject)}">Open</button></div>`;
   }).join('');
  };
- return panel('Notifications'+(unread?' · '+unread+' unread':''),(section('Needs action',needsAction)+section('Updates',item=>!needsAction(item))||empty('You’re caught up.'))+`<div class="panel-foot actions">${unread?btn('Mark all read','notifications-read'):''}${full?'':btn('View all','desktop-inbox')}</div>`);
+ return panel((personalNotifications?'My updates':'Notifications')+(unread?' · '+unread+' unread':''),filters+(section('Needs action',needsAction)+section('Updates',item=>!needsAction(item))||empty('You’re caught up.'))+`<div class="panel-foot actions">${unread?btn('Mark all read','notifications-read'):''}${full?'':btn('View all','desktop-inbox')}</div>`);
 }
 const notificationOverlay=document.createElement('dialog');
 notificationOverlay.id='notification-overlay';
 notificationOverlay.setAttribute('aria-label','Notifications');
 document.body.append(notificationOverlay);
 let notificationSession=false;
-const homePage=()=>isFounder()?'Overview':'My Day';
+const homePage=()=>personalNotifications?'My Day':isFounder()?'Overview':'My Day';
 function beginNotificationHistory(){
  if(notificationSession&&history.state?.svavedaNotifications)return;
  history.pushState({...history.state,svavedaNotifications:true},'');
@@ -846,6 +870,7 @@ function paintNotifications(){
 }
 function openNotifications(){
  if(busy)return;
+ personalNotifications=page==='My Day';notificationFilter='All';
  if(modal.open)modal.close();
  beginNotificationHistory();paintNotifications();
  if(!notificationOverlay.open)notificationOverlay.showModal();
@@ -890,7 +915,7 @@ async function refreshMessageAlerts(){
  try{
   const messages=await messageRequest();
   messageAlerts=(messages.messages||[]).filter(message=>message.recipient===messages.user&&message.sender!==messages.user).slice(-20)
-   .map(message=>({id:'message:'+message.id,label:'New workspace message',subject:'Open Messages to read it',at:Number(message.created)||0,act:'nav',key:'Messages'}));
+   .map(message=>({id:'message:'+message.id,label:'New workspace message',subject:(messages.directory.find(person=>person.id===message.sender)?.name||'Teammate')+' sent a message',at:Number(message.created)||0,act:'message-thread',key:message.sender}));
  }catch{}
 }
 async function refreshAlerts(baseline=false){

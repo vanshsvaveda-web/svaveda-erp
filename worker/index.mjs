@@ -117,6 +117,8 @@ async function workspace(request, env) {
   }
   groupExpertOnboardingTasks(next);
   advanceRecurringTasks(next);
+  // Sync status is derived for responses, never accepted as stored user data.
+  for(const lead of next.leads)delete lead.syncState;
   const payload = JSON.stringify(next);
   if (new TextEncoder().encode(payload).length > maxPayloadBytes) return json({ error:'Workspace storage limit reached.' }, 413);
   const user = access.workspace;

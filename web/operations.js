@@ -3,13 +3,13 @@ let projectSelection='', projectView='List', projectTab='Tasks';
 function openQuickLead(){
  const people=[...new Set([...data.people.map(person=>person.name),...(roleSeats||[]).filter(seat=>seat.email).map(seat=>seat.name)])].filter(name=>name&&name!==currentName);
  form('Quick capture',input('Expert name','name','','text',true)+input('Phone (optional)','phone','','tel')+
-  input('Instagram @handle or profile link (optional)','instagram')+area('Note (optional)','instructions')+
+  input('Instagram @handle or profile link (optional)','instagram')+
   select('Who should fill in the details?','researcher','<option value="">I’ll handle it</option>'+options(people,''))+
-  '<p>Choose a teammate to collect the details and send the lead back to you for outreach.</p>',
- 'Save lead',values=>{
+  '<details class="task-options"><summary>Add a note</summary>'+area('Note','instructions')+'</details><p>Capture → Complete details → Back to you for outreach</p>',
+ 'Capture lead',values=>{
   const {researcher,...details}=values;
   const lead={id:id(),status:'New',source:'Manual',quickCaptured:true};
-  if(researcher)lead.researchReturnTo=currentName;
+  lead.capturedBy=currentName;lead.capturedAt=Date.now();if(researcher)lead.researchReturnTo=currentName;
   setLead(lead,{...details,owners:[researcher||currentName],due:day(1),
     action:researcher?'Complete expert details':values.instagram?'Review Instagram lead':'Review new lead'});
  },'compact');
@@ -26,7 +26,7 @@ function openLeadResearch(lead){
 
 function followUpHistory(lead){
  const entries=loggedFollowUps(lead);
- const rows=entries.map((entry,index)=>`<div class="item"><strong>Follow-up #${entry.number||entries.length-index}</strong><p>${e([entry.date,entry.actor,entry.method,entry.status].filter(Boolean).join(' · '))}</p>${entry.previousAction?`<p>Action: ${e(entry.previousAction)}</p>`:''}${entry.note?`<p>${e(entry.note)}</p>`:''}${entry.nextAction?`<p>Next: ${e([entry.nextAction,entry.nextDue].filter(Boolean).join(' · '))}</p>`:''}</div>`).join('');
+ const rows=entries.map((entry,index)=>`<div class="item"><strong>Follow-up #${entry.number||entries.length-index}</strong><p>${e([entry.date,entry.actor,entry.method,entry.status].filter(Boolean).join(' · '))}</p>${entry.previousAction?`<p>Action: ${e(entry.previousAction)}</p>`:''}${entry.note?`<p>${e(entry.note)}</p>`:''}${entry.nextAction?`<p>Next: ${e([entry.nextAction,entry.nextDue,entry.responsible&&'Responsible: '+entry.responsible].filter(Boolean).join(' · '))}</p>`:''}</div>`).join('');
  return `<details class="task-options"><summary>Follow-up history · ${entries.length} logged</summary>${rows||empty('No follow-ups logged yet.')}</details>`;
 }
 
@@ -45,10 +45,11 @@ function openLeadOutcome(key){
  const method=methods.includes(lead.method)?lead.method:methods[0];
  const launch=contact?`<div class="follow-up-contact">${select('Contact method','method',options(methods,method))}<a class="contact-action" id="follow-up-contact">Open contact</a></div>`:'';
  const count=loggedFollowUps(lead).length;
- const context=[assigneeLabel(lead)||'Unassigned',count+' previously logged',lead.action,lead.due&&'Due '+lead.due].filter(Boolean).join(' · ');
- form('Follow-up #'+(count+1)+' · '+e(lead.name),'<p>'+e(context)+'</p>'+(lead.researchNotes?'<p><strong>Research notes:</strong> '+e(lead.researchNotes)+'</p>':'')+launch+
+ const last=loggedFollowUps(lead)[0];
+ const context=['Responsible: '+(lead.owner||'Unassigned'),lead.action,lead.due&&'Due '+lead.due].filter(Boolean).join(' · ');
+ form('Follow-up #'+(count+1)+' · '+e(lead.name),leadSyncBadge(lead)+'<div class="follow-up-summary"><strong>'+count+' previous follow-ups</strong><p>'+e(last?'Last: '+[last.date,last.actor,last.status,last.note].filter(Boolean).join(' · '):'First contact — no previous follow-ups')+'</p><p>'+e(context)+'</p></div>'+(lead.researchNotes?'<p><strong>Research notes:</strong> '+e(lead.researchNotes)+'</p>':'')+launch+
  select('Outcome','status',options(statuses,lead.status))+input('Next step','action','')+
- input('Follow-up date','due',lead.due>=day()?lead.due:'','date')+area('Notes','note','')+followUpHistory(lead),
+ input('Follow-up date','due',lead.due>=day()?lead.due:'','date')+(assignees(lead).length>1?select('Responsible for next step','responsible',options(assignees(lead),lead.owner)):'')+area('Notes','note','')+followUpHistory(lead),
  'Save follow-up',value=>({type:'lead-outcome',id:key,...value}), 'compact');
  const fields=modal.querySelector('form').elements;
  const updateNextStep=()=>{
@@ -114,9 +115,10 @@ function renderProjects(){
  const milestones=project.milestones||[];
  const taskContent=projectView==='Board'?taskBoard(tasks):taskRows(tasks);
  const completed=tasks.length?Math.round(done/tasks.length*100):0;
- const projectTabs=`<div class="toolbar filter-tabs" aria-label="Project sections">${['Tasks','Milestones','Members'].map(name=>`<button data-act="ops-project-tab" data-key="${name}" aria-pressed="${name===projectTab}">${name}</button>`).join('')}</div>`;
+ const projectTabs=`<div class="toolbar filter-tabs" aria-label="Project sections">${['Tasks','Discussion','Milestones','Members'].map(name=>`<button data-act="ops-project-tab" data-key="${name}" aria-pressed="${name===projectTab}">${name}</button>`).join('')}</div>`;
  const members=[...new Set([project.owner,...(project.members||[])].filter(Boolean))];
  const content={
+  Discussion:discussionPreview('project',project),
   Tasks:`<div class="toolbar"><div class="segments" aria-label="Project task view">${['List','Board'].map(name=>`<button data-act="ops-view" data-key="${name}" aria-pressed="${name===projectView}">${name}</button>`).join('')}</div></div>`+taskContent,
   Milestones:milestones.map(item=>listItem(item.title,item.due||'No date',isEmployee()?pill(item.done?'Complete':'Open'):btn(item.done?'Reopen':'Complete','ops-milestone',item.id))).join('')||empty('No milestones yet.'),
   Members:members.map(name=>listItem(name,name===project.owner?'Project owner':'Project member')).join('')||empty('No project members yet.')
@@ -197,7 +199,7 @@ async function processSheetQueue(){
   if(response.status===409)return;
   const result=await response.json();
   if(!response.ok)throw Error(result.error||'Unable to process Sheet updates.');
-  if(result.processed)await updateWorkspace();
+  if(result.processed){await updateWorkspace();if(!modal.open)render();}
   sheetWriteError=result.failed?'Some Sheet changes are waiting to retry.':'';
  }catch(error){sheetWriteError=error.message;}
  finally{busy=false;updateSyncLabel()}
@@ -387,4 +389,43 @@ async function refreshPresencePanel(){
     return `<tr><td>${e(person.name)}</td><td>${active(person)?'Active':'Last seen '+clock(Number(person.last_seen))}</td><td>${e(person.section)}</td><td>${time||'—'}</td><td>${e(person.ip||'—')}${different?'<small>Different from active teammates</small>':''}</td></tr>`;
    })):empty('No ERP activity recorded today.'));
  }catch(error){if(target.isConnected)target.innerHTML=empty(e(error.message));}
+}
+function bindResponsiblePicker(){
+ const box=modal.querySelector('.assignee-picker');if(!box)return;
+ const field=box.querySelector('[name=responsible]');if(!field)return;
+ const update=()=>{const names=[...box.querySelectorAll('[name=owners]:checked')].map(input=>input.value),previous=field.value;field.innerHTML=names.map(name=>'<option>'+e(name)+'</option>').join('')||'<option value="">Unassigned</option>';if(names.includes(previous))field.value=previous;field.parentElement.hidden=names.length<2;};
+ box.querySelectorAll('[name=owners]').forEach(input=>input.addEventListener('change',update));update();
+}
+function leadSyncBadge(lead){
+ const state=lead.syncState||{status:data.sheetQueue?.[lead.id]?.error?'retrying':data.sheetQueue?.[lead.id]?'queued':!data.sheetLink?'disconnected':lead.sheetSnapshot?'synced':'not-synced'};
+ const labels={queued:'Saved to ERP · Sheet sync queued',retrying:'Saved to ERP · Sheet retry scheduled',synced:'Synced to Google Sheets','needs-phone':'Saved to ERP · Add a phone to sync','not-synced':'Saved to ERP · Sheet sync not confirmed',disconnected:'Saved to ERP · No Sheet connected'};
+ return `<span class="lead-sync-state ${e(state.status)}" role="status">${e(labels[state.status]||'Saved to ERP')}${state.status==='retrying'&&state.nextAt?'<small>Retry '+clock(state.nextAt)+'</small>':''}${state.message?'<small>'+e(state.message)+'</small>':''}</span>`;
+}
+let workDiscussionDrafts=new Map();
+function discussionPreview(kind,record){
+ return `<details class="task-options"><summary>Discussion · ${(record.discussion||[]).length}</summary>${(record.discussion||[]).slice(-3).map(item=>'<p><strong>'+e(item.actor)+'</strong> · '+e(calendarStamp(item.at))+'<br>'+e(item.text)+'</p>').join('')||'<p>No comments yet.</p>'}${btn('Open discussion','work-discussion',kind+':'+record.id)}</details>`;
+}
+function addDiscussionAction(kind,id){
+ const record=data[kind==='task'?'tasks':'projects'].find(item=>item.id===id);
+ if(modal.querySelector('.popup-form'))modal.querySelector('.popup-form').dataset.recordKey=kind+':'+id;
+ modal.querySelector('.popup-fields')?.insertAdjacentHTML('beforeend',discussionPreview(kind,record));
+}
+function openWorkDiscussion(key){
+ const [kind,id]=key.split(':'),record=data[kind==='task'?'tasks':'projects']?.find(item=>item.id===id);if(!record)return;
+ // Preserve unfinished task edits while reading or adding to its discussion.
+ const existing=modal.querySelector('.popup-form');
+ if(modal.open&&existing?.dataset.recordKey===key&&!existing.dataset.discussion){if([...new FormData(existing)].some(([,value])=>typeof value!=='string'&&value.size)){notify('Save your attachment before opening the discussion.');return;}workDiscussionDrafts.set(key,[...new FormData(existing)].filter(([,value])=>typeof value==='string'));}
+ if(modal.open)modal.close();
+ const members=[...new Set(kind==='task'?assignees(record):[record.owner,...(record.members||[])])].filter(Boolean);
+ const history=(record.discussion||[]).map(item=>`<article class="discussion-entry"><strong>${e(item.actor)}</strong><time>${e(calendarStamp(item.at))}</time><p>${e(item.text)}</p>${item.mentions?.length?'<small>Tagged: '+e(item.mentions.join(', '))+'</small>':''}</article>`).join('');
+ const commentId=crypto.randomUUID();
+ form(e(record.title||record.name)+' · Discussion','<div class="discussion-history" role="log" aria-label="Work discussion">'+(history||empty('Keep updates and decisions with this work.'))+'</div>'+area('Update','text')+select('Notify a teammate (optional)','mention','<option value="">No mention</option>'+options(members.filter(name=>name!==currentName),'')), 'Post update',value=>({type:'work-comment',kind,id,text:value.text,mentions:value.mention?[value.mention]:[],commentId}),'compact');
+ modal.querySelector('form').dataset.discussion='true';
+ const back=document.createElement('button');back.type='button';back.textContent='Back to '+kind;
+ back.onclick=()=>{modal.close();const trigger=document.createElement('button');trigger.dataset.act=kind==='task'?'task':'ops-project';trigger.dataset.key=id;document.body.append(trigger);trigger.click();trigger.remove();const draft=workDiscussionDrafts.get(key);if(draft&&kind==='task'){for(const [name,value] of draft){const inputs=modal.querySelectorAll('[name="'+CSS.escape(name)+'"]');for(const input of inputs){if(input.type==='checkbox')input.checked=draft.some(([n,v])=>n===name&&v===input.value);else input.value=value;}}bindResponsiblePicker();}};
+ modal.querySelector('.popup-actions').prepend(back);
+}
+
+function readTaskResultInputs(task,value){
+ for(const key of ['actualOutput','proofUrl','actualHours','kpiActual'])if(Object.hasOwn(value,key))task[key]=value[key];
 }

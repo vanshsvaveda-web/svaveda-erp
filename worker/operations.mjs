@@ -11,7 +11,21 @@ function audit(state,access,action,subject) {
 
 function operate(access,state,command) {
   const employee = access.role === 'Employee';
-  if(command.type==='lead-research-complete'){
+  if(command.type==='work-comment'){
+    const key=command.kind==='task'?'tasks':command.kind==='project'?'projects':null;
+    const record=key&&scopedState(access)[key].find(item=>item.id===command.id);
+    const actual=key&&state[key].find(item=>item.id===command.id);
+    if(!record||!actual)throw Error('This work is unavailable.');
+    if(typeof command.text!=='string'||command.text.length>2000)throw Error('Keep discussion updates within 2,000 characters.');
+    const text=cleanText(command.text,2000);if(!text)throw Error('Write a comment first.');
+    const members=command.kind==='task'?assignees(actual):[actual.owner,...(actual.members||[])];
+    const mentions=Array.isArray(command.mentions)?[...new Set(command.mentions.filter(name=>members.includes(name)))]:[];
+    const requestId=cleanText(command.commentId,80);if(!requestId)throw Error('Comment identifier required.');
+    const prior=(actual.discussion||[]).find(item=>item.id===requestId);if(prior){if(prior.actor!==access.name||prior.text!==text||JSON.stringify(prior.mentions)!==JSON.stringify(mentions))throw Error('This comment identifier was already used.');return;}
+    if((actual.discussion||[]).length>=200)throw Error('This discussion has reached 200 updates. Continue in Messages or a linked task.');
+    actual.discussion=[...(actual.discussion||[]),{id:requestId,text,actor:access.name,at:Date.now(),mentions}];
+    audit(state,access,'Commented on '+command.kind,actual.title||actual.name);
+  }else if(command.type==='lead-research-complete'){
     completeLeadResearch(access,state,command);
   } else if (command.type === 'lead-outcome') {
     const lead = state.leads.find(item => item.id === command.id && (!employee || assignedTo(item,access.name)));
@@ -26,6 +40,10 @@ function operate(access,state,command) {
     if (due && (!validDate(due) || due < todayIST()))
       throw Error('Choose a follow-up date today or later.');
     const note = cleanText(command.note,3000);
+    if(command.responsible){
+      if(!assignedTo(lead,command.responsible))throw Error('Choose a responsible person from this lead’s assignees.');
+      setAssignees(lead,responsibleFirst(assignees(lead),command.responsible));
+    }
     for (const task of state.tasks.filter(item => item.lead === lead.id && item.status !== 'Done')) {
       task.status = 'Done';
       if (task.timer) task.elapsed = (task.elapsed||0) + Math.max(0,Date.now()-task.timer);
@@ -38,7 +56,7 @@ function operate(access,state,command) {
     if(action||command.status==='Follow-up')lead.sheetStage='Followup';
     else if(command.status==='Contacted'&&!lead.sheetStage)lead.sheetStage='Communication';
     const number=loggedFollowUps(lead).length+1;
-    (lead.history ||= []).unshift({kind:'follow-up',number,date:todayIST(),status:lead.status,note,actor:access.name,method,previousAction,nextAction:action,nextDue:due});
+    (lead.history ||= []).unshift({kind:'follow-up',number,date:todayIST(),status:lead.status,note,actor:access.name,method,previousAction,nextAction:action,nextDue:due,responsible:lead.owner});
     if (action) state.tasks.unshift({id:crypto.randomUUID(),title:action+' · '+lead.name,owner:assignees(lead)[0],owners:assignees(lead),due,priority:lead.priority||'Medium',status:'To do',lead:lead.id,note});
     audit(state,access,'Logged lead outcome',lead.name);
   } else if (command.type === 'request') {

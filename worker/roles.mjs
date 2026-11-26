@@ -40,7 +40,7 @@ function validateSeats(seats, adminEmail, existingSeats) {
   });
 }
 
-function scopedState(access) {
+function baseScopedState(access) {
   if (!access.state) return access.state;
   if (access.role === 'Super Admin') return {...access.state,seats:access.seats};
   const {seats,orgKey,attendanceByUser,messages,sheetLink,sheetSyncedAt,sheetQueue,sheetSync,...visible} = access.state;
@@ -86,4 +86,13 @@ function mergeTeamState(access, value) {
   }
   (state.attendanceByUser ||= {})[access.user] = value.attendance;
   return state;
+}
+
+function scopedState(access){
+ const visible=baseScopedState(access);if(!visible)return visible;
+ return {...visible,leads:visible.leads.map(lead=>{
+  const job=access.state.sheetQueue?.[lead.id];
+  const status=!access.state.sheetLink?'disconnected':job?.error?'retrying':job?'queued':lead.quickCaptured&&!lead.phone?'needs-phone':lead.sheetSnapshot?'synced':'not-synced';
+  return {...lead,syncState:{status,at:lead.sheetWrittenAt||0,nextAt:job?.nextAt||0,attempts:job?.attempts||0,...(job?.error?{message:access.role==='Super Admin'?job.error:'This update is waiting for an automatic retry.'}:{})}};
+ })};
 }
