@@ -3,7 +3,7 @@ const e=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt
 const day=(offset=0,now=Date.now())=>new Date(Number(now)+(330+offset*1440)*60000).toISOString().slice(0,10);
 function greeting(now=new Date()){
  const hour=new Date(Number(now)+330*60000).getUTCHours();
- return hour<12?'Good morning':hour<17?'Good afternoon':'Good evening';
+ return hour<5?'Working late':hour<12?'Good morning':hour<17?'Good afternoon':'Good evening';
 }
 const id=()=>crypto.randomUUID();
 const fresh=()=>({
@@ -23,7 +23,7 @@ const nav=[
  {name:'Operations',icon:'☷',pages:['Tasks','Projects']},
  {name:'Marketing',icon:'◈',pages:['Marketing Tasks']},
  {name:'Sales',icon:'◎',pages:['Expert Leads','Pipeline','Lead Tasks']},
- {name:'Team',icon:'♙',pages:['Employees','Attendance','Performance']},
+ {name:'Team',icon:'♙',pages:['Team To-dos','Monthly Attendance','Employees','Attendance','Performance']},
  {name:'Messages',icon:'✉',pages:['Messages']},
  {name:'Settings',icon:'⚙',pages:['Integrations','Roles & Access']}
 ];
@@ -32,7 +32,7 @@ const isLeadTask=task=>Boolean(task.lead||data.projects.some(project=>project.id
 const taskSection=task=>isLeadTask(task)||task.department==='Expert acquisition'?'Sales':
  ['Marketing','Content','Social media'].includes(task.department)?'Marketing':'Operations';
 function leadGenerationTabs(active){
- return `<div class="panel"><div class="toolbar filter-tabs" aria-label="Sales views">${[['Leads','Expert Leads'],['Pipeline','Pipeline'],['Lead tasks','Lead Tasks']].map(([label,key])=>`<button type="button" data-act="nav" data-key="${key}" aria-pressed="${active===key}">${label}</button>`).join('')}</div></div>`;
+ return `<div class="panel"><div class="toolbar filter-tabs" aria-label="Sales views">${[['Leads','Expert Leads'],['Pipeline','Pipeline'],['Lead tasks','Lead Tasks']].map(([label,key])=>`<button type="button" data-act="nav" data-key="${key}" aria-pressed="${active===key}">${label}</button>`).join('')}${data.projects.filter(isOnboardingProject).map(project=>btn('Onboarding project','ops-project',project.id)).join('')}</div></div>`;
 }
 const workspaceIcons={
  home:'<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
@@ -52,7 +52,7 @@ const workspaceIcons={
 const workspaceIcon=name=>'<svg class="workspace-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(workspaceIcons[name]||workspaceIcons.tasks)+'</svg>';
 const statuses=['New','Contacted','Follow-up','Interested','Registered','Verified','Program listed','Onboarded','Not reachable','Not interested','Invalid number','Do not contact'];
 const actions=['Initial call','Send details','Follow-up','Schedule meeting','Collect documents','Verify documents','Registration','Program listing','Complete onboarding'];
-const taskStatuses=['To do','In progress','Blocked','In review','Rework','Done'];
+const taskStatuses=['To do','In progress','Blocked','On hold','In review','Rework','Done'];
 async function save(command){
  const response=await fetch('/api/workspace',{
   method:'PUT',headers:{'Content-Type':'application/json'},
@@ -98,7 +98,7 @@ const area=(label,name,value='')=>`<label>${label}<textarea name="${name}">${e(v
 function assigneePicker(record){
  const selected=assignees(record);
  const people=[...new Set([...selected,currentName,...data.people.map(p=>p.name),...(roleSeats||[]).filter(p=>p.email).map(p=>p.name)].filter(Boolean))];
- return `<fieldset class="assignee-picker"><legend>Assign to · first person is responsible</legend>${people.map(name=>`<label><input type="checkbox" name="owners" value="${e(name)}" ${selected.includes(name)?'checked':''}>${e(name)}</label>`).join('')}<label class="responsible-picker">Responsible for next step<select name="responsible">${selected.map(name=>'<option>'+e(name)+'</option>').join('')||'<option value="">Choose assignees above</option>'}</select></label></fieldset>`;
+ return `<fieldset class="assignee-picker"><legend>Assign to</legend>${people.map(name=>`<label><input type="checkbox" name="owners" value="${e(name)}" ${selected.includes(name)?'checked':''}>${e(name)}</label>`).join('')}<label class="responsible-picker">Responsible for next step<select name="responsible">${selected.map(name=>'<option>'+e(name)+'</option>').join('')||'<option value="">Choose assignees above</option>'}</select></label></fieldset>`;
 }
 const assigneeLinks=record=>assignees(record).map(ownerLink).join(', ')||'Unassigned';
 const btn=(label,act,key='',primary=false)=>`<button type="button" class="${primary?'primary':''}" data-act="${act}" data-key="${e(key)}">${label}</button>`;
@@ -129,7 +129,7 @@ function restoreDraft(target,saved){
   }else target[key]=structuredClone(value);
  }
 }
-function form(title,fields,submit,handler,size='regular'){
+function form(title,fields,submit,handler,size='regular',onSaved){
  modal.innerHTML=`<form class="popup-form ${size==='compact'?'popup-compact':''}"><div class="popup-heading"><h2 id="record-dialog-title">${title}</h2><button type="button" class="popup-close" id="cancel" aria-label="Close">×</button></div><div class="popup-fields">${fields}<p role="alert" id="error"></p></div><div class="popup-actions"><button type="button" id="cancel-form">Cancel</button><button class="primary">${submit}</button></div></form>`;
  $('#cancel').onclick=$('#cancel-form').onclick=()=>{if(!busy)modal.close()};
  modal.querySelector('form').onsubmit=async event=>{
@@ -143,6 +143,7 @@ function form(title,fields,submit,handler,size='regular'){
    if(event.currentTarget.querySelector('.assignee-picker')) fields.owners=values.getAll('owners');
    const command=await handler(fields);
    await save(command);
+   if(onSaved)onSaved();
    if(command?.type==='work-comment'){modal.close();render();openWorkDiscussion(command.kind+':'+command.id);notify('Update posted');return}
    modal.close();render();notify(data.leads.some(lead=>['queued','retrying'].includes(lead.syncState?.status))?'Saved to ERP · Sheet changes sync automatically':'Saved to ERP');
   }catch(problem){
@@ -170,7 +171,7 @@ function attendanceCard(){
  const a=data.attendance[day()]||{};
  const state=a.out?'Checked out':a.pause?'On break':a.in?'Checked in':'Ready to check in';
  const work=a.in?duration(Math.max(0,(a.out||Date.now())-a.in-(a.breakMs||0)-(a.pause?Date.now()-a.pause:0))):'0h 0m';
- return `<div class="item"><strong>${state}</strong><p>Check-in ${clock(a.in)} · Worked ${work}</p><div class="actions">${a.out?'':!a.in?btn('Check in','attendance','in',true):btn(a.pause?'End break':'Start break','attendance','break')+btn('Check out','attendance','out',true)}</div></div>`;
+ return `<div class="item"><strong>${state}</strong><p>Check-in ${clock(a.in)} · Worked ${work}</p><div class="actions">${a.out?'':!a.in?btn('Check in','attendance','in',true):btn(a.pause?'End break':'Start break','attendance','break')+(!a.pause?btn('Lunch','attendance','lunch'):'')+btn('Check out','attendance','out',true)}</div></div>`;
 }
 const taskRows=tasks=>tasks.length?tasks.map(t=>`<div class="item task-line"><div><button class="link task-name" data-act="task" data-key="${e(t.id)}">${e(t.title)}</button><small>${[assigneeLabel(t)||'Unassigned',t.due?'Due '+t.due:'No due date',t.priority].filter(Boolean).map(e).join(' · ')}</small></div>${pill(t.status)}</div>`).join(''):empty('No tasks in this view.');
 let dayTaskQueue, agendaDate, fullCalendarOpen=false, dayScheduleOpen=false;
@@ -191,10 +192,11 @@ function renderPersonal(){
  const ownAlerts=activityAlerts(data).filter(item=>personalNotification(item));
  const unread=ownAlerts.filter(item=>!readNotifications().has(item.id)).length;
  const upcoming=queues['Next up'].filter(task=>task.due>today).length;
- ui.innerHTML=`<div class="personal-heading"><div><div class="day-date">${e(calLabel(today,{weekday:'long',day:'numeric',month:'long'}))} · IST</div><h1>${greeting()}, ${e(currentName)}<span class="greeting-dot">.</span></h1><p>Your tasks. Your next steps. Your day.</p></div><div class="actions">${btn('Calendar','personal-calendar')}${isEmployee()?'':btn('＋ Quick capture','quick-lead','',true)}${isFounder()?btn('Company overview','nav','Overview'):''}</div></div>
+ ui.innerHTML=`<div class="personal-heading"><div><div class="day-date">${e(calLabel(today,{weekday:'long',day:'numeric',month:'long'}))} · IST</div><h1>${greeting()}, ${e(currentName)}<span class="greeting-dot">.</span></h1><p class="daily-quote">${e(dailyQuote())}</p></div><div class="actions">${btn('Calendar','personal-calendar')}${isEmployee()?btn('New task','task','',true):btn('＋ Quick capture','quick-lead','',true)}${isFounder()?btn('Company overview','nav','Overview'):''}</div></div>
  <div class="personal-context"><span>${queues['In progress'].length} in progress · ${queues['Next up'].filter(task=>task.due&&task.due<today).length} overdue${upcoming?' · '+upcoming+' upcoming':''}</span>${btn(unread?unread+' personal '+(unread===1?'update':'updates'):'My updates','personal-updates')}</div>
+ ${queues['Next up'].length?'<div class="attention-banner" role="status"><span>'+queues['Next up'].length+' assigned '+(queues['Next up'].length===1?'task needs':'tasks need')+' your next step</span>'+btn('Open first task','task',queues['Next up'][0].id)+'</div>':''}
  <div class="personal-layout"><article class="panel work-panel"><div class="toolbar filter-tabs work-tabs" aria-label="My work filters">${Object.entries(queues).map(([label,items])=>`<button data-act="day-work-filter" data-key="${label}" aria-pressed="${label===dayTaskQueue}">${label} <span class="tab-count">${items.length}</span></button>`).join('')}</div>${work}${all.length>6?'<div class="panel-foot">'+btn(personalShowAll?'Show fewer':'Show all '+all.length,'personal-more')+'</div>':''}${looseFollowUps.length&&dayTaskQueue==='Next up'?'<details class="personal-extra"><summary>Other follow-ups due · '+looseFollowUps.length+'</summary>'+looseFollowUps.slice(0,6).map(lead=>listItem(lead.name,'Follow-up #'+(loggedFollowUps(lead).length+1)+' · '+lead.action,btn('Follow up','outcome',lead.id))).join('')+'</details>':''}</article>
- <aside class="personal-sidebar">${panel('My schedule today',meetings.slice(0,3).map(event=>listItem(event.title,eventTime(event.time)||'All day',btn('Open','event',event.id))).join('')||empty('No meetings today.'))}${captures.length?'<details class="panel personal-extra"><summary>Waiting for expert details · '+captures.length+'</summary>'+captures.slice(0,5).map(lead=>listItem(lead.name,'With '+assigneeLabel(lead),btn('View','lead',lead.id))).join('')+'</details>':''}${isEmployee()?'<details class="panel personal-extra"><summary>My requests</summary>'+personalRequests()+'</details>':''}</aside></div>`;
+ <aside class="personal-sidebar">${personalNotesMarkup()}${panel('My schedule today',meetings.slice(0,3).map(event=>listItem(event.title,eventTime(event.time)||'All day',btn('Open','event',event.id))).join('')||empty('No meetings today.'))}${captures.length?'<details class="panel personal-extra"><summary>Waiting for expert details · '+captures.length+'</summary>'+captures.slice(0,5).map(lead=>listItem(lead.name,'With '+assigneeLabel(lead),btn('View','lead',lead.id))).join('')+'</details>':''}${isEmployee()?'<details class="panel personal-extra"><summary>My requests</summary>'+personalRequests()+'</details>':''}</aside></div>`;bindPersonalNotes();
 }
 let personalShowAll=false,personalNotifications=false;
 
@@ -338,7 +340,7 @@ function renderWorkspace(){
  const filters=personalTaskScope?['Mine','Today','Overdue','Review','Completed']:['Open','Today','Overdue','Review','Completed','All'];
  const taskViewContent=items=>{
   if(taskView==='Board')return taskBoard(items);
-  if(taskView==='List')return table(['Task','Assignee','Due date','Points','Status'],items.map(t=>`<tr><td>${btn(e(t.title),'task',t.id)}</td><td>${assigneeLinks(t)}</td><td>${e(t.due||'—')}</td><td>${taskPoints(t)||'—'}</td><td>${pill(t.status)}</td></tr>`));
+  if(taskView==='List')return todoTable(items);
   const dated=items.filter(task=>task.due).sort((a,b)=>a.due.localeCompare(b.due));
   const days=[...new Set(dated.map(task=>task.due))];
   const undated=items.filter(task=>!task.due);
@@ -360,9 +362,12 @@ function renderWorkspace(){
  }
  if(page==='Review Queue'){renderReviewQueue();return}
  if(page==='Projects'){renderProjects();return}
+ if(page==='Team To-dos'){renderTeamTodos();return}
+ if(page==='Monthly Attendance'){void renderMonthlyAttendance();return}
 
  if(page==='Attendance'&&isFounder())ui.innerHTML=title('Team','Manage team workload and availability.',btn('Approvals','nav','Review Queue'))+teamDirectory();
  else if(page==='Attendance')ui.innerHTML=title(isEmployee()?'Attendance':'Team','Track check-ins, breaks and working hours.',btn('New request','ops-request'))+panel('Today',attendanceCard())+panel('Attendance history',table(['Date','Check-in','Check-out','Working time'],Object.entries(data.attendance).sort().reverse().map(([d,a])=>`<tr><td>${d}</td><td>${clock(a.in)}</td><td>${clock(a.out)}</td><td>${a.out?duration(a.out-a.in-(a.breakMs||0)):'In progress'}</td></tr>`)))+personalRequests()+teamDirectory()+teamPerformance();
+ if(page==='Attendance'&&!isEmployee())ui.insertAdjacentHTML('afterbegin',teamNavigation());
  if(page==='Attendance')ui.insertAdjacentHTML('beforeend','<p>While you use the ERP, it records your active section, approximate time, and network IP for the Super Admin’s activity view.</p>');
  if(page==='Attendance'&&isSuperAdmin()){ui.insertAdjacentHTML('beforeend',presencePanelPlaceholder());void refreshPresencePanel();}
  if(page==='Employees'){page='Attendance';render();return}
@@ -537,28 +542,21 @@ document.addEventListener('click',async ev=>{
  if(act==='task-view'){taskView=key;render();return}
  if(act==='task-tab'){taskFilter=key;render();return}
 
+ if(act.startsWith('extra-')){await extrasAction(act,key);return}
+ if(act==='nav'&&isEmployee()&&['Team To-dos','Monthly Attendance','Employees'].includes(key))return;
  if(act.startsWith('ops-')){operationsAction(act,key);return}
  if(act==='nav'&&key==='Review Queue'&&isEmployee())return;
  if(act==='nav'&&['Integrations','Roles & Access'].includes(key)&&!isSuperAdmin())return;
  if(act==='person'&&!isSuperAdmin())return;
  if(isEmployee()&&['assign','import','export','cal-add','cal-slot'].includes(act))return;
- if(isEmployee()&&!key&&['lead','task','project','event'].includes(act))return;
+ if(isEmployee()&&!key&&['lead','project','event'].includes(act))return;
  if(act.startsWith('cal-')){calendarAction(act,key);return}
  if(act.startsWith('msg-')){messageAction(act,key);return}
  if(act==='nav'||act==='queue'){closeNavigation();if(['Tasks','Lead Tasks','Marketing Tasks'].includes(key)){personalTaskScope=false;taskFilter='Open'}if(key==='Expert Leads'){expertView='List';leadPage=1}page=act==='queue'?'Expert Leads':key;filter=act==='queue'?'Unassigned':b.dataset.filter||(isEmployee()?'My leads':'All leads');query='';selected.clear();render();ui.focus({preventScroll:true});return}
- if(act==='attendance'){
- const a=data.attendance[day()]||={};
- const now=Date.now();
- if(a.out||key==='in'&&a.in||key!=='in'&&!a.in)return;
- if(key==='in')a.in=now;
- if(key==='break'&&!a.pause)a.pause=now;
- else if(a.pause){a.breakMs=(a.breakMs||0)+now-a.pause;delete a.pause}
- if(key==='out')a.out=now;
- busy=true;try{await save()}catch(error){data=structuredClone(committed);notify(error.message)}finally{busy=false;render()}return;
- }
+ if(act==='attendance'){busy=true;try{await save({type:'attendance',action:key});notify('Attendance saved')}catch(error){notify(error.message)}finally{busy=false;render()}return}
  if(act==='quick-lead'&&!isEmployee()){openQuickLead();return;}
  if(act==='lead'){
- const l=data.leads.find(x=>x.id===key)||{id:id(),status:'New',source:'Manual'};
+ const l=data.leads.find(x=>x.id===key)||{id:id(),status:'New',source:'Manual',owner:currentName,owners:[currentName]};
  const links=btn('Follow up','outcome',l.id);
  const handoff=l.researchReturnTo?'<p>Details assigned to '+e(assigneeLabel(l))+' · Returns to '+e(l.researchReturnTo)+'</p>':
   l.researchNotes?'<p><strong>Research notes:</strong> '+e(l.researchNotes)+'</p>':'';
@@ -586,23 +584,26 @@ document.addEventListener('click',async ev=>{
  if(act==='outcome'){if(modal.open)modal.close();openLeadOutcome(key);return}
  if(act==='task'){
  if(modal.open)modal.close();
- const t=data.tasks.find(x=>x.id===key)||{id:id(),status:'To do',priority:'Medium',start:day(),due:day(),projectId:page==='Projects'?projectSelection:'',department:page==='Marketing Tasks'?'Marketing':undefined};
+ const t=data.tasks.find(x=>x.id===key)||{id:id(),owner:currentName,owners:[currentName],status:'To do',priority:'Medium',start:day(),due:day(),projectId:page==='Projects'?projectSelection:'',department:page==='Marketing Tasks'?'Marketing':undefined};
  const researchLead=t.status!=='Done'&&t.lead&&data.leads.find(lead=>lead.id===t.lead&&lead.researchReturnTo&&assignedTo(lead,currentName));
  if(researchLead){openLeadResearch(researchLead);return;}
  if(t.lead&&t.status!=='Done'&&data.leads.some(lead=>lead.id===t.lead)){openLeadOutcome(t.lead);return;}
+ if(isEmployee()&&!key){
+  form('My new task',input('Task description','title','','text',true)+input('Due date (optional)','due',day(),'date')+area('Notes (optional)','note')+'<details class="task-options"><summary>Category, priority and estimate (optional)</summary>'+select('Category','department',options(['',...taskDepartments],''))+select('Priority','priority',options(['Low','Medium','High','Urgent'],'Medium'))+taskAmount('Estimated hours','hours')+select('Repeat','repeat',options(['None','Daily','Weekly','Monthly'],'None'))+'</details><p>This task is assigned to you and visible to founders and Super Admin.</p>','Add task',value=>({type:'task-create',id:t.id,...value}),'compact');return;
+ }
  if(isEmployee()){
   if(t.status==='Done'){readRecord(e(t.title),'<p>Completed</p><p>'+e(t.note)+'</p>'+download(t.file)+download(t.submission)+discussionPreview('task',t));return}
   const summary='<p class="task-summary">'+e([t.due?'Due '+t.due:'No due date',t.status].join(' · '))+'</p>'+
    (t.note?'<p class="task-summary">'+e(t.note)+'</p>':'')+download(t.file);
   form(e(t.title),summary+taskChecklist(t)+area('Note (optional)','comment')+
-   '<details class="task-options"><summary>Results and attachment (optional)</summary><div class="task-options-grid">'+
+   '<details class="task-options"><summary>Status, results and attachment (optional)</summary><div class="task-options-grid">'+select('Work status','progressStatus',options(['To do','In progress','On hold','Blocked'],['To do','In progress','On hold','Blocked'].includes(t.status)?t.status:'In progress'))+
    taskResultFields(t)+input('File','submission','','file')+download(t.submission)+'</div></details>'+
    '<input type="hidden" name="status" value="'+e(t.status==='Rework'?'In progress':t.status)+'">',
    t.status==='In review'?'Update submission':'Submit work',async value=>{
    t.checklist=(t.checklist||[]).map((item,i)=>({...item,done:value['step'+i]==='on'}));
    const file=await attach(value.submission);if(file)t.submission=file;
    if(value.status==='In review'&&t.timer){t.elapsed=(t.elapsed||0)+Math.max(0,Date.now()-t.timer);delete t.timer}
-   t.status=value.status;readTaskResultInputs(t,value);
+   t.status=value.status==='In review'?'In review':value.progressStatus;if(['On hold','Blocked'].includes(t.status)&&t.timer){t.elapsed=(t.elapsed||0)+Math.max(0,Date.now()-t.timer);delete t.timer}readTaskResultInputs(t,value);
    if(value.comment.trim())(t.comments||=[]).push(value.comment.trim());
   },'compact');
   const primarySubmit=modal.querySelector('.popup-actions .primary');
@@ -613,15 +614,15 @@ document.addEventListener('click',async ev=>{
  const fields=input('Task name','title',t.title,'text',true)+assigneePicker(t)+input('Due date','due',t.due,'date')+
   area('Note (optional)','note',t.note)+
   '<details class="task-options"><summary>Project and priority</summary><div class="task-options-grid">'+
-  projectField(t.projectId)+select('Priority','priority',options(['Low','Medium','High','Urgent'],t.priority))+'</div></details>'+
+  projectField(t.projectId)+select('Category','department',options(['',...taskDepartments],t.department||''))+select('Priority','priority',options(['Low','Medium','High','Urgent'],t.priority))+select('Status','editableStatus',options(taskStatuses,t.status))+select('Forwarded recipient (optional)','forwardedTo',nameOptions(t.forwardedTo,'None'))+'</div></details>'+
   '<details class="task-options"><summary>Planning, recurrence and results (optional)</summary><div class="task-options-grid">'+select('Repeat after completion','repeat',options(['None','Daily','Weekly','Monthly'],t.repeat||'None'))+area('Checklist (one per line)','checklistText',(t.checklist||[]).map(item=>item.text).join('\n'))+taskAmount('Estimated hours','hours',t.hours)+taskPlanFields(t)+taskResultFields(t)+'</div></details>'+
   '<input type="hidden" name="status" value="'+e(t.status)+'">';
  form(key?'Task':'New task',fields,'Save task',async v=>{
   if(v.repeat&&v.repeat!=='None'&&!v.due)throw Error('Set a due date for the recurring task.');
-  if(v.status==='Done'&&t.timer){t.elapsed=(t.elapsed||0)+Math.max(0,Date.now()-t.timer);delete t.timer}
+  if((v.status==='Done'||v.editableStatus==='Done')&&t.timer){t.elapsed=(t.elapsed||0)+Math.max(0,Date.now()-t.timer);delete t.timer}
   // Keep files, start date and tracking intact; optional planning fields stay collapsed.
-  Object.assign(t,{title:v.title.trim(),due:v.due,note:v.note,projectId:v.projectId,priority:v.priority,status:v.status});
-  setAssignees(t,responsibleFirst(v.owners,v.responsible));
+  Object.assign(t,{title:v.title.trim(),due:v.due,note:v.note,projectId:v.projectId,priority:v.priority,status:v.status==='Done'?'Done':v.editableStatus,forwardedTo:v.forwardedTo});
+  setAssignees(t,responsibleFirst(v.owners,v.responsible));if(v.forwardedTo)setAssignees(t,[v.forwardedTo,...assignees(t)]);
   const oldSteps=new Map((t.checklist||[]).map(item=>[item.text,item.done]));t.checklist=v.checklistText.split('\n').map(text=>text.trim()).filter(Boolean).slice(0,100).map(text=>({text,done:oldSteps.get(text)||false}));
   for(const field of ['repeat','department','taskType','plannedDate','expectedOutput','kpi','kpiUnit','kpiRollup'])t[field]=v[field];
   for(const field of ['hours','kpiTarget'])t[field]=v[field]!==''?Number(v[field]):'';readTaskResultInputs(t,v);
@@ -648,7 +649,7 @@ document.addEventListener('click',async ev=>{
  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='svaveda-expert-leads.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
  }
 });
-$('#quick').onclick=()=>{modal.innerHTML='<h2>Create</h2><div class="create-choices">'+btn('Quick capture','quick-lead')+btn('Expert lead','lead')+btn('Task','task')+btn('Calendar event','event')+(isSuperAdmin()?btn('Employee','person'):'')+'</div>';modal.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>modal.close()));modal.showModal()};
+$('#quick').onclick=()=>{modal.innerHTML='<div class="search-dialog-heading"><h2>Create</h2>'+btn('×','extra-close-modal')+'</div><div class="create-choices">'+btn('Quick capture','quick-lead')+btn('Expert lead','lead')+btn('Task','task')+btn('Calendar event','event')+(isSuperAdmin()?btn('Employee','person'):'')+'</div>';modal.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>modal.close()));modal.showModal()};
 function readRecord(heading,body){
  modal.innerHTML='<h2>'+heading+'</h2>'+body+'<button id="close-record">Close</button>';
  $('#close-record').onclick=()=>modal.close();
@@ -683,9 +684,12 @@ function renderRoles(){
 const jump=$('#jump-dialog');
 function openJump(){
  if(!data||busy||modal.open||jump.open)return;
- jump.innerHTML=`<h2 id="jump-title">Search workspace</h2><input id="jump-query" type="search" placeholder="Find a page, task, lead, or project" aria-label="Search workspace" autocomplete="off"><div id="jump-results"></div>`;
+ jump.innerHTML=`<div class="search-dialog-heading"><h2 id="jump-title">Search workspace</h2><button id="close-jump" type="button" aria-label="Close search">×</button></div><input id="jump-query" type="search" placeholder="Find a page, task, lead, or project" aria-label="Search workspace" autocomplete="off"><div id="jump-results"></div>`;
  const search=$('#jump-query'), results=$('#jump-results');
+ $('#close-jump').onclick=()=>jump.close();
  const pages=nav.flatMap(group=>group.pages).filter(name=>{
+  if(name==='Inbox')return false;
+  if(isEmployee()&&['Team To-dos','Monthly Attendance'].includes(name))return false;
   if(['Integrations','Roles & Access'].includes(name))return isSuperAdmin();
   return !isEmployee()||!['Overview','Employees','Review Queue'].includes(name);
  });
@@ -697,7 +701,7 @@ function openJump(){
  ];
  function update(){
   const query=search.value.trim().toLowerCase();
-  const matches=destinations.filter(item=>!query?item.type==='Page':(item.name+' '+item.type).toLowerCase().includes(query)).slice(0,9);
+  const matches=destinations.filter(item=>!query?item.type==='Page':(item.name+' '+item.type).toLowerCase().includes(query)).slice(0,30);
   results.innerHTML=matches.map(item=>`<button class="jump-result" data-act="${item.act}" data-key="${e(item.key)}"><strong>${e(item.name)}</strong><small>${item.type}</small></button>`).join('')||empty('No matching pages or records.');
  }
  search.oninput=update;
@@ -789,6 +793,7 @@ function activityAlerts(state){
   }
   if(mine&&task.assignedAt>=cutoff)add('assigned:'+task.id+':'+task.assignedAt,task.handoffReady?'Expert details ready':'Task assigned',task.title,task.assignedAt,'task',task.id);
   if(mine&&status==='Rework')add('rework:'+task.id+':'+(task.statusChangedAt||0),'Task returned for changes',task.title,task.statusChangedAt,'task',task.id);
+  if(managers&&status==='In progress'&&task.statusChangedAt>=cutoff)add('started:'+task.id+':'+task.statusChangedAt,'Task started',[task.title,task.statusChangedBy||assigneeLabel(task)].join(' · '),task.statusChangedAt,'task',task.id);
   if(managers&&status==='In review')add('review:'+task.id+':'+(task.reviewAt||0),'Task awaiting review',task.title,task.reviewAt,'ops-decision','Task|'+task.id);
   if(mine&&status!=='In review'&&task.due&&task.due<=today)
    add('task-due:'+task.id+':'+task.due,task.due===today?'Task due today':'Task overdue',task.title,0,'task',task.id);
@@ -803,6 +808,7 @@ function activityAlerts(state){
   if(managers&&request.status==='Pending')
    add('review-request:'+request.id,'Request awaiting review',[request.kind,request.owner].filter(Boolean).join(' · '),request.at,'ops-decision','Request|'+request.id);
  }
+ if(!isEmployee())for(const event of state.attendanceEvents||[])add('attendance:'+event.id,event.kind,event.actor+' · '+clock(event.at),event.at,'nav','Monthly Attendance');
  for(const [kind,records] of [['task',state.tasks],['project',state.projects]])for(const record of records){
   const mine=kind==='task'?assignedTo(record,currentName):record.owner===currentName||record.members?.includes(currentName);
   for(const comment of record.discussion||[]){
@@ -914,8 +920,8 @@ async function updateWorkspace(){
 async function refreshMessageAlerts(){
  try{
   const messages=await messageRequest();
-  messageAlerts=(messages.messages||[]).filter(message=>message.recipient===messages.user&&message.sender!==messages.user).slice(-20)
-   .map(message=>({id:'message:'+message.id,label:'New workspace message',subject:(messages.directory.find(person=>person.id===message.sender)?.name||'Teammate')+' sent a message',at:Number(message.created)||0,act:'message-thread',key:message.sender}));
+  messageAlerts=(messages.messages||[]).filter(message=>(message.recipient===messages.user||message.recipient===messages.group?.id)&&message.sender!==messages.user).slice(-20)
+   .map(message=>({id:'message:'+message.id,label:'New workspace message',subject:(messages.directory.find(person=>person.id===message.sender)?.name||'Teammate')+' sent a message',at:Number(message.created)||0,act:'message-thread',key:message.recipient===messages.group?.id?messages.group.id:message.sender}));
  }catch{}
 }
 async function refreshAlerts(baseline=false){
@@ -935,6 +941,7 @@ async function refreshAlerts(baseline=false){
   const previous=JSON.parse(localStorage.getItem(key)||'null');
   const seen=new Set(Array.isArray(previous)?previous:[]);
   const added=entries.filter(item=>!seen.has(item.id));
+  if(previous&&!baseline&&added.length)notify(added.length===1?added[0].label+' · '+added[0].subject:added.length+' new workspace updates');
   if(previous&&!baseline&&added.length&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
    const categories=[...new Set(added.map(item=>item.label))];
    const notification=new Notification('SvaVeda Workspace',{body:categories.length===1?categories[0]:added.length+' new workspace updates',tag:'svaveda-workspace'});
@@ -957,5 +964,7 @@ async function enableDesktopNotifications(){
  }
 }
 $('#desktop-alerts').onclick=openNotifications;
-setInterval(()=>{void sendWorkspacePresence();if(page==='Attendance'&&isSuperAdmin())void refreshPresencePanel();void refreshAlerts();void processSheetQueue().finally(autoPullSheet)},60000);
+setInterval(()=>{void sendWorkspacePresence();if(page==='Attendance'&&isSuperAdmin())void refreshPresencePanel();void processSheetQueue().finally(autoPullSheet)},60000);
 load();
+
+setInterval(()=>{if(document.visibilityState==='visible')void refreshAlerts()},15000);

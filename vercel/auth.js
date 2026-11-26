@@ -50,11 +50,11 @@ export async function identity(request,cookies=[]) {
 }
 
 export function loginPage(failed=false) {
-  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f6fa"><meta name="apple-mobile-web-app-capable" content="yes"><title>SvaVeda Workspace · Sign in</title><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icons/app-192.png"><link rel="icon" href="/icons/app-192.png"><script src="/appearance.js"></script><link rel="stylesheet" href="/signin.css"></head><body><main><div class="login-brand"><span aria-hidden="true">✦</span><div><h1>SvaVeda</h1><small>Your workspace, wherever you work.</small></div></div><div class="login-controls"><button type="button" data-theme-toggle aria-label="Change theme">◐</button><button type="button" data-install-app>↓ Install app</button></div>${failed?'<p role="alert">Sign-in failed. Check your account details.</p>':''}<form method="post" action="/api/sign-in"><label>Email<input name="email" type="email" autocomplete="username" inputmode="email" autocapitalize="none" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button class="login-submit">Sign in</button></form></main></body></html>`,
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f6fa"><meta name="apple-mobile-web-app-capable" content="yes"><title>SvaVeda Workspace · Sign in</title><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/logo.png"><link rel="icon" href="/logo.svg"><script src="/appearance.js"></script><link rel="stylesheet" href="/signin.css"></head><body><main><div class="login-brand"><img class="brand-logo" src="/logo.svg" alt="SvaVeda"><div><h1>SvaVeda</h1><small>Your workspace, wherever you work.</small></div></div><div class="login-controls"><button type="button" data-theme-toggle aria-label="Change theme">◐</button><button type="button" data-install-app>↓ Install app</button></div>${failed?'<p role="alert">Sign-in failed. Check your account details.</p>':''}<form method="post" action="/api/sign-in"><label>Email<input name="email" type="email" autocomplete="username" inputmode="email" autocapitalize="none" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button class="login-submit">Sign in</button></form></main></body></html>`,
   {status:failed?401:200,headers:{...secureHeaders,'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"}});
 }
 
-export async function signIn(request) {
+export async function signIn(request,onAuthenticated=async()=>{}) {
   if(request.method!=='POST'||request.headers.get('Origin')!==new URL(request.url).origin) return new Response('Forbidden',{status:403,headers:secureHeaders});
   const form=await request.formData();
   const email=form.get('email'),password=form.get('password');
@@ -67,6 +67,7 @@ export async function signIn(request) {
   if(!response.ok)return loginPage(true);
   const session=await response.json();
   if(!validUser(session.user)||!session.access_token||!session.refresh_token)return loginPage(true);
+  await onAuthenticated(session.user);
   return withSessionCookies(new Response(null,{status:303,headers:{...secureHeaders,Location:'/'}}),sessionCookies(session));
 }
 

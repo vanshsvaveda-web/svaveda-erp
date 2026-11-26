@@ -1,6 +1,6 @@
 /* Never store signed-in pages, API responses, messages or credentials offline. */
-const STATIC_CACHE='svaveda-public-v1';
-const PUBLIC_FILES=['/offline.html','/icons/app-192.png','/icons/app-512.png','/icons/maskable-512.png'];
+const STATIC_CACHE='svaveda-public-v2';
+const PUBLIC_FILES=['/offline.html','/logo.svg','/logo.png','/icons/app-192.png','/icons/app-512.png','/icons/maskable-512.png'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(STATIC_CACHE).then(cache=>cache.addAll(PUBLIC_FILES)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('svaveda-public-')&&key!==STATIC_CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()))});
 self.addEventListener('fetch',event=>{

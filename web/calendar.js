@@ -117,7 +117,7 @@ function calendarAction(act,key){
  calendar();
 }
 function openEvent(key,date,time){
- const item=data.events.find(event=>event.id===key)||{id:id(),date:date||day(),time};
+ const item=data.events.find(event=>event.id===key)||{id:id(),owner:currentName,date:date||day(),time};
  if(isEmployee()){readRecord(e(item.title),'<p>'+e([item.date,item.time,item.endTime].filter(Boolean).join(' · '))+'</p><p>'+e(item.note)+'</p>');return}
  form(key?'Edit event':'New event',
   input('Event title','title',item.title,'text',true)+

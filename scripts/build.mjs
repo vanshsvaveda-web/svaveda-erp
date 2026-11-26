@@ -23,14 +23,17 @@ for (const [path, file, mime] of [
   ['/lead-history.js', 'lead-history.js', 'text/javascript; charset=utf-8'],
   ['/assignees.js', 'assignees.js', 'text/javascript; charset=utf-8'],
   ['/task-metrics.js', 'task-metrics.js', 'text/javascript; charset=utf-8'],
+  ['/extras.js','extras.js','text/javascript; charset=utf-8'],
+  ['/logo.svg','logo.svg','image/svg+xml'],
+  ['/logo.png','logo.png','image/png'],
   ['/app.js', 'app.js', 'text/javascript; charset=utf-8'],
 ]) {
   assets[path] = mime==='image/png'?{mime,body:(await readFile('web/'+file)).toString('base64'),encoding:'base64'}:{mime,body:await readFile('web/'+file,'utf8')};
 }
-let worker = (await readFile('worker/index.mjs', 'utf8')) + '\n' + (await readFile('worker/messages.mjs', 'utf8')) + '\n' + (await readFile('web/message-links.js', 'utf8')) + '\n' + (await readFile('worker/roles.mjs', 'utf8')) + '\n' + (await readFile('worker/operations.mjs', 'utf8')) + '\n' + (await readFile('worker/sheets.mjs', 'utf8')) + '\n' + (await readFile('web/assignees.js', 'utf8')) + '\n' + (await readFile('web/lead-history.js', 'utf8'));
+let worker = (await readFile('worker/index.mjs', 'utf8')) + '\n' + (await readFile('worker/extras.mjs','utf8')) + '\n' + (await readFile('worker/messages.mjs', 'utf8')) + '\n' + (await readFile('web/message-links.js', 'utf8')) + '\n' + (await readFile('worker/roles.mjs', 'utf8')) + '\n' + (await readFile('worker/operations.mjs', 'utf8')) + '\n' + (await readFile('worker/sheets.mjs', 'utf8')) + '\n' + (await readFile('web/assignees.js', 'utf8')) + '\n' + (await readFile('web/lead-history.js', 'utf8'));
 if (process.env.VERCEL === '1' || process.env.SVAVEDA_VERCEL_BUILD === '1') {
   await mkdir('dist/public/icons', { recursive: true });
-  for (const file of ['mobile.css','signin.css','appearance.js','sw.js','manifest.webmanifest','offline.html','icons/app-192.png','icons/app-512.png','icons/maskable-512.png','style.css','modern.css','app.js','calendar.js','messages.js','message-links.js','operations.js','task-metrics.js','assignees.js','lead-history.js']) await copyFile('web/'+file,'dist/public/'+file);
+  for (const file of ['extras.js','logo.svg','logo.png','mobile.css','signin.css','appearance.js','sw.js','manifest.webmanifest','offline.html','icons/app-192.png','icons/app-512.png','icons/maskable-512.png','style.css','modern.css','app.js','calendar.js','messages.js','message-links.js','operations.js','task-metrics.js','assignees.js','lead-history.js']) await copyFile('web/'+file,'dist/public/'+file);
   worker = worker.replace(/const ownerHash = '[a-f0-9]*';/, "const ownerHash = process.env.SVAVEDA_OWNER_EMAIL_HASH || '';");
   assets['/'].body = assets['/'].body.replace('<div class="header-actions">', '<div class="header-actions"><form method="post" action="/api/sign-out"><button>Sign out</button></form>');
 }

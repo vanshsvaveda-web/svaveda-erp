@@ -3,19 +3,22 @@ import { timingSafeEqual } from 'node:crypto';
 import worker from '../dist/server/index.js';
 import { database, withSheetWriteLock } from '../vercel/database.js';
 import { identity, loginPage, signIn, signOut, withSessionCookies } from '../vercel/auth.js';
-import { workspaceMessageDirectory } from '../vercel/message-directory.js';
+import { workspaceMessageDirectory, registerMessageMember } from '../vercel/message-directory.js';
 
 export default {
   async fetch(request) {
     const original = new URL(request.url);
     const path = original.searchParams.get('route') || original.pathname;
     const url = new URL(original.origin);
-    url.pathname = path;
+    url.pathname = path;url.search=original.search;url.searchParams.delete('route');
     const sessionCookies=[];
     try {
       if (path === '/api/health' && request.method === 'GET') {
         try {
           await database.prepare('select revision from public.workspace_state limit 1').bind().first();
+          await database.prepare('select user_id from public.message_members limit 1').bind().first();
+          await database.prepare('select workspace_id from public.workspace_presence limit 1').bind().first();
+          await database.prepare('select workspace_id from public.workspace_notes limit 1').bind().first();
         } catch (error) {
           const code=String(error.code||'');
           const diagnosis = /^[A-Z0-9_]{2,36}$/.test(code) ? code :
@@ -39,7 +42,7 @@ export default {
           SHEET_WRITES_SERIALIZED:true,SHEET_CRON_AUTHORIZED:true
         }));
       }
-      if (path === '/api/sign-in') return await signIn(request);
+      if (path === '/api/sign-in') return await signIn(request,user=>registerMessageMember(user,database));
       if (path === '/api/sign-out') return signOut(request);
       const headers = new Headers(request.headers);
       headers.delete('oai-authenticated-user-id');

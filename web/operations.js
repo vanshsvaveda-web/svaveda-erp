@@ -43,7 +43,7 @@ function openLeadOutcome(key){
  const contact=(phone||instagram)&&!['Do not contact','Invalid number','Not interested','Onboarded','Program listed'].includes(lead.status);
  const methods=[...(phone?['Call','WhatsApp']:[]),...(instagram?['Instagram']:[])];
  const method=methods.includes(lead.method)?lead.method:methods[0];
- const launch=contact?`<div class="follow-up-contact">${select('Contact method','method',options(methods,method))}<a class="contact-action" id="follow-up-contact">Open contact</a></div>`:'';
+ const launch=select('Action taken','method',options(['Call','WhatsApp','Email','Instagram','Other'],lead.method||'Call'));
  const count=loggedFollowUps(lead).length;
  const last=loggedFollowUps(lead)[0];
  const context=['Responsible: '+(lead.owner||'Unassigned'),lead.action,lead.due&&'Due '+lead.due].filter(Boolean).join(' · ');
@@ -57,18 +57,7 @@ function openLeadOutcome(key){
   fields.action.disabled=fields.due.disabled=!canPlan;
  };
  fields.status.onchange=updateNextStep;updateNextStep();
- const link=$('#follow-up-contact');
- if(!link)return;
- const mode=modal.querySelector('[name=method]');
- const update=()=>{
-  const whatsapp=mode.value==='WhatsApp';
-  const social=mode.value==='Instagram';
-  link.href=social?'https://www.instagram.com/'+encodeURIComponent(instagram)+'/':whatsapp?'https://wa.me/'+(phone.length===10?'91'+phone:phone):'tel:'+lead.phone.replace(/[^+\d]/g,'');
-  link.target=whatsapp||social?'_blank':'_self';
-  link.rel='noopener noreferrer';
-  link.textContent=social?'Open Instagram':whatsapp?'Open WhatsApp':'Open dialer';
- };
- mode.onchange=update;update();
+
 }
 
 function reviewRows(){
@@ -84,7 +73,7 @@ function renderReviewQueue(){
  const categories=['All','Tasks','Leave','Attendance'];
  ui.innerHTML=title('Review Queue','Review submitted work, leave, and attendance corrections.')+
  `<div class="split review-columns"><div>${panel('Pending review',`<div class="toolbar"><div class="filter-tabs" aria-label="Review filters">${categories.map(label=>`<button data-act="ops-review-tab" data-key="${label}" aria-pressed="${reviewFilter===label}">${label} <span class="tab-count">${label==='All'?rows.length:rows.filter(item=>kind(item)===label).length}</span></button>`).join('')}</div></div>`+
- (filtered.map(item=>listItem(item.title,[item.owner,item.kind==='Task'?'Task submission':item.title,item.at?waitingSince(item.at):'',item.date].filter(Boolean).join(' · '),btn('Review','ops-decision',item.kind+'|'+item.id))).join('')||empty('Nothing is waiting in this view.')))}</div>
+ (filtered.map(item=>item.kind==='Task'?'<section class="review-card"><div><h3>'+e(item.title)+'</h3><p>'+e([item.owner,item.at?waitingSince(item.at):'',item.date].filter(Boolean).join(' · '))+'</p>'+download(data.tasks.find(task=>task.id===item.id)?.submission)+'</div><div class="actions">'+btn('Approve','extra-review-approve',item.id,true)+btn('Return for changes','extra-review-return',item.id)+btn('View task','task',item.id)+'</div></section>':listItem(item.title,[item.owner,item.title,item.date].filter(Boolean).join(' · '),btn('Review','ops-decision',item.kind+'|'+item.id))).join('')||empty('Nothing is waiting in this view.')))}</div>
  <div>${panel('This week',listItem('Overdue tasks',String(data.tasks.filter(item=>item.status!=='Done'&&item.due&&item.due<day()).length))+listItem('Follow-ups due in the next 7 days',String(data.leads.filter(item=>item.action==='Follow-up'&&item.due>=day()&&item.due<=day(7)).length)))}
  ${panel('Recent activity',(data.activity||[]).slice(0,5).map(item=>listItem(item.action,[item.subject,item.actor,calendarStamp(item.at)].join(' · '))).join('')||empty('No recent activity.'))}</div></div>`;
 }
@@ -140,7 +129,7 @@ function taskBoard(tasks){
 }
 
 function openProject(key){
- const project=data.projects.find(item=>item.id===key)||{id:id(),due:day()};
+ const project=data.projects.find(item=>item.id===key)||{id:id(),owner:currentName,due:day()};
  if(isEmployee())return;
  const names=[...new Set([...data.people.map(item=>item.name),...(roleSeats||[]).filter(item=>item.email).map(item=>item.name)])];
  const members=`<fieldset><legend>Members</legend>${names.map(name=>`<label class="project-member"><input type="checkbox" name="member_${e(name)}" ${project.members?.includes(name)?'checked':''}>${e(name)}</label>`).join('')}</fieldset>`;
@@ -165,7 +154,7 @@ function operationsAction(act,key){
  if(act==='ops-backup'&&isSuperAdmin()){downloadBackup();return}
  if(act==='ops-leave'){const item=(data.requests||[]).find(request=>request.id===key&&request.status==='Approved');if(item)readRecord(e(item.owner)+' · Approved leave','<p>'+e(item.start+' – '+item.end)+'</p>');return}
  if(act==='ops-project-tab'){projectTab=key;renderProjects();return}
- if(act==='ops-project'){projectSelection=key;projectTab='Tasks';page='Projects';render();return}
+ if(act==='ops-project'){if(modal.open)modal.close();projectSelection=key;projectTab='Tasks';page='Projects';render();return}
  if(act==='ops-view'){projectView=key;renderProjects();return}
  if(act==='ops-milestone'&&!isEmployee()){
   const item=data.projects.find(project=>project.id===projectSelection)?.milestones.find(milestone=>milestone.id===key);
@@ -304,7 +293,7 @@ const taskResultFields=t=>area('Actual output','actualOutput',t.actualOutput)+ta
 const taskResultsDetails=t=>`${t.expectedOutput?'<p><strong>Expected:</strong> '+e(t.expectedOutput)+'</p>':''}${t.actualOutput?'<p><strong>Delivered:</strong> '+e(t.actualOutput)+'</p>':''}${/^https?:\/\//i.test(t.proofUrl||'')?'<p><a href="'+e(t.proofUrl)+'" target="_blank" rel="noopener noreferrer">Open deliverable</a></p>':''}`;
 function taskPlanFields(t){
  return '<p id="task-points" aria-live="polite"></p>'+
- select('Department','department',options(['Choose department',...taskDepartments],t.department,'Choose department'))+
+
  select('Task type','taskType',options(['Choose type',...taskTypes],t.taskType,'Choose type'))+
  input('Planned work date','plannedDate',t.plannedDate||t.due,'date')+
  area('Expected output','expectedOutput',t.expectedOutput)+input('KPI name','kpi',t.kpi)+

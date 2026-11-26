@@ -1,4 +1,4 @@
-const taskDepartments = ['Marketing','Expert acquisition','Content','Social media','Development','Design','Operations'];
+const taskDepartments = ['Marketing','Expert acquisition','Content','Social media','Development','Engineering','Design','Operations'];
 const taskTypes = ['Daily recurring','Operational','Project-based','Strategic','Unplanned','Research'];
 const taskPointBands = [[15,1],[30,2],[60,3],[180,5],[300,8],[Infinity,13]];
 const taskPoints = task => {

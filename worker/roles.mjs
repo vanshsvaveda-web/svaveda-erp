@@ -43,10 +43,11 @@ function validateSeats(seats, adminEmail, existingSeats) {
 function baseScopedState(access) {
   if (!access.state) return access.state;
   if (access.role === 'Super Admin') return {...access.state,seats:access.seats};
-  const {seats,orgKey,attendanceByUser,messages,sheetLink,sheetSyncedAt,sheetQueue,sheetSync,...visible} = access.state;
+  const {seats,orgKey,attendanceByUser,messages,sheetLink,sheetSyncedAt,sheetQueue,sheetSync,attendanceEvents,...visible} = access.state;
   visible.messages = [];
   visible.attendance = attendanceByUser?.[access.user] || {};
   if (access.role === 'Founder') {
+    visible.attendanceEvents=attendanceEvents||[];
     const byName = new Map(visible.people.map(person => [person.name,person]));
     for (const seat of access.seats.filter(item => item.email)) {
       if (!byName.has(seat.name)) byName.set(seat.name,{name:seat.name,role:seat.role});
@@ -66,7 +67,7 @@ function mergeTeamState(access, value) {
   if (access.role === 'Founder') {
     for (const key of ['leads','tasks','projects','events','reviews']) state[key] = value[key];
   } else {
-    const statuses = new Set(['To do','In progress','Blocked','In review','Rework']);
+    const statuses = new Set(['To do','In progress','Blocked','On hold','In review','Rework']);
     for (const task of state.tasks.filter(item => assignedTo(item,access.name))) {
       if (task.status === 'Done') continue;
       const edited = value.tasks.find(item => item?.id === task.id);
@@ -84,7 +85,7 @@ function mergeTeamState(access, value) {
       else delete task.timer;
     }
   }
-  (state.attendanceByUser ||= {})[access.user] = value.attendance;
+  // Attendance is changed only by server-timed actions or approved corrections.
   return state;
 }
 

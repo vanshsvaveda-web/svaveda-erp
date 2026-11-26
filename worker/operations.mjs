@@ -9,9 +9,31 @@ function audit(state,access,action,subject) {
   state.activity = [{actor:access.name,action,subject,at:Date.now()},...(state.activity||[])].slice(0,100);
 }
 
-function operate(access,state,command) {
+function operate(access,state,command,env={}) {
   const employee = access.role === 'Employee';
-  if(command.type==='work-comment'){
+  if(command.type==='task-create'){
+    const title=cleanText(command.title,200);if(!title||typeof command.id!=='string'||! /^[a-f0-9-]{36}$/i.test(command.id))throw Error('Enter a task description.');
+    if(command.owners?.some(name=>name!==access.name))throw Error('Personal tasks must be assigned to you.');
+    if(command.due&&!validDate(command.due))throw Error('Choose a valid due date.');
+    if(!['None','Daily','Weekly','Monthly'].includes(command.repeat||'None'))throw Error('Choose a valid repeat schedule.');
+    if(command.repeat&&command.repeat!=='None'&&!command.due)throw Error('Recurring tasks need a due date.');
+    const existing=state.tasks.find(task=>task.id===command.id);if(existing){if(existing.createdBy===access.name&&existing.title===title)return;throw Error('This task identifier already exists.');}
+    const hours=command.hours===''||command.hours==null?'':Number(command.hours);if(hours!==''&&(!Number.isFinite(hours)||hours<0||hours>1000))throw Error('Enter estimated hours between 0 and 1,000.');
+    state.tasks.unshift({id:command.id,title,owner:access.name,owners:[access.name],createdBy:access.name,createdAt:Date.now(),due:command.due||'',priority:['Low','Medium','High','Urgent'].includes(command.priority)?command.priority:'Medium',status:'To do',repeat:command.repeat||'None',department:cleanText(command.department,60),hours,note:cleanText(command.note,3000)});
+    audit(state,access,'Created personal task',title);
+  }else if(command.type==='attendance'){
+    if(access.role==='Founder')throw Error('Founder accounts do not track attendance.');
+    if(!['in','out','break','lunch'].includes(command.action))throw Error('Choose a valid attendance action.');
+    const records=access.role==='Super Admin'?(state.attendance||={}):((state.attendanceByUser||={})[access.user]||={});
+    const record=records[todayIST()]||={},now=Date.now();
+    if(command.action==='in'){if(record.in)throw Error('Already checked in today.');record.in=now;record.checkInIp=env.CLIENT_IP||null;}
+    else {if(!record.in||record.out)throw Error('An active check-in is required.');
+      if(command.action==='lunch'&&record.pause)throw Error('End the current break first.');
+      if(command.action==='out'){record.out=now;record.checkOutIp=env.CLIENT_IP||null;}
+      if(record.pause){record.breakMs=(record.breakMs||0)+now-record.pause;delete record.pause;}
+      else if(command.action!=='out'){record.pause=now;record.breakKind=command.action==='lunch'?'Lunch':'Break';}
+    }
+  }else if(command.type==='work-comment'){
     const key=command.kind==='task'?'tasks':command.kind==='project'?'projects':null;
     const record=key&&scopedState(access)[key].find(item=>item.id===command.id);
     const actual=key&&state[key].find(item=>item.id===command.id);

@@ -9,11 +9,12 @@ const DB={prepare(sql){return {bind(...args){return {first:async()=>{
  if(sql.includes('FROM workspace_state'))return {workspace_id:'workspace',revision:1,payload:JSON.stringify(state)};
  if(sql==='SELECT email FROM message_members WHERE user_id = ?')return members.find(m=>m.id===args[0]);
  if(sql.startsWith('SELECT COUNT(*)'))return {count:members.filter(m=>args.includes(m.id)).length};
+ if(sql.startsWith('SELECT attachment_name'))return records.find(m=>m.id===args[0]&&(m.sender_id===args[1]||m.recipient_id===args[2]||m.recipient_id===args[3]));
  if(sql.includes('FROM direct_messages'))return records.find(m=>m.id===args[0]);
  throw Error(sql);
 },all:async()=>{
  if(sql.includes('FROM message_members'))return {results:members.filter(m=>m.id!==args[0])};
- if(sql.includes('FROM direct_messages'))return {results:records.filter(m=>m.sender_id===args[0]||m.recipient_id===args[0]).slice().reverse().map(m=>({id:m.id,sender:m.sender_id,recipient:m.recipient_id,body:m.body,file:m.attachment_name,created:m.created_at}))};
+ if(sql.includes('FROM direct_messages'))return {results:records.filter(m=>m.sender_id===args[0]||m.recipient_id===args[0]||m.recipient_id===args[2]).slice().reverse().map(m=>({id:m.id,sender:m.sender_id,recipient:m.recipient_id,body:m.body,file:m.attachment_name,created:m.created_at}))};
  throw Error(sql);
 },run:async()=>{
  if(sql.startsWith('INSERT INTO message_members')){joins.push(args);return {meta:{changes:1}}}
@@ -57,3 +58,17 @@ assert.equal((await call(payload('Pending','seat-pending'),{directory:automatic}
 assert.equal((await call(payload('Removed','removed'),{directory:automatic})).status,403);
 assert.equal((await call(payload('Hidden [[task:private-task]]'),{directory:automatic})).status,403);
 console.log('PASS: automatic team directory; no-join delivery; inactive and removed recipient rejection; private email redaction; shared-record ACLs preserved.');
+const groupId='group:workspace';
+assert.equal((await call(payload('Team update',groupId),{directory:automatic})).status,200);
+assert.equal((await call(payload('Shared [[task:shared-task]]',groupId),{directory:automatic})).status,200);
+assert.equal((await call(payload('Private [[task:private-task]]',groupId),{directory:automatic})).status,403,'group links require access for every seat');
+assert.equal((await call(payload('Other workspace','group:other'),{directory:automatic})).status,403);
+console.log('PASS: default workspace group; shared work links; private work and cross-workspace group rejection.');
+
+const groupRead=await (await call(null,{method:'GET',user:'jamie',directory:automatic})).json();assert.ok(groupRead.messages.some(message=>message.recipient===groupId&&message.sender==='avery'));
+const groupFile={...payload('Team attachment',groupId),file:{name:'synthetic.txt',data:btoa('synthetic file')}};assert.equal((await call(groupFile,{directory:automatic})).status,200);
+const download=await call(null,{method:'GET',user:'jamie',path:'/api/messages/files/'+groupFile.id,directory:automatic});assert.equal(download.status,200);assert.equal(await download.text(),'synthetic file');
+assert.equal((await call(payload('Group reply [[reply:'+groupFile.id+']]',groupId),{directory:automatic})).status,200);
+assert.equal((await call(payload('Private reply [[reply:'+shared.id+']]',groupId),{directory:automatic})).status,403);
+records.push({id:'foreign-file',sender_id:'other',recipient_id:'group:other',attachment_name:'private.txt',attachment_data:btoa('private')});assert.equal((await call(null,{method:'GET',path:'/api/messages/files/foreign-file',directory:automatic})).status,404);
+console.log('PASS: group history visible to team recipients; group attachments and replies; private reply and foreign attachment boundaries.');

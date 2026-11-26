@@ -7,13 +7,14 @@ async function messages(request, env, path) {
 
   if (path.startsWith('/api/messages/files/')) {
     if (request.method !== 'GET') return json({ error: 'Method not allowed.' }, 405);
-    const file = await env.DB.prepare('SELECT attachment_name, attachment_data FROM direct_messages WHERE id = ? AND (sender_id = ? OR recipient_id = ?)').bind(path.split('/').at(-1), user, user).first();
+    const file = await env.DB.prepare('SELECT attachment_name, attachment_data FROM direct_messages WHERE id = ? AND (sender_id = ? OR recipient_id = ? OR recipient_id = ?)').bind(path.split('/').at(-1), user, user,'group:'+access.workspace).first();
     if (!file?.attachment_data) return json({ error: 'Attachment not found.' }, 404);
     return new Response(Uint8Array.from(atob(file.attachment_data), character => character.charCodeAt(0)), {
       headers: { ...privateHeaders, 'Content-Type': 'application/octet-stream', 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(file.attachment_name).replace(/'/g, '%27') }
     });
   }
   const db = env.DB;
+  const group='group:'+access.workspace;
   const url = new URL(request.url);
   if (request.method === 'GET') {
     let active;
@@ -25,11 +26,11 @@ async function messages(request, env, path) {
       for(const person of directory.results)if(access.seats.some(seat=>seat.email===person.email)||await isAdmin(person.email))active.push({id:person.id,name:person.name});
     }
     const records = await db.prepare(
-      'SELECT id, sender_id AS sender, recipient_id AS recipient, body, attachment_name AS file, created_at AS created FROM direct_messages WHERE sender_id = ? OR recipient_id = ? ORDER BY created_at DESC, id DESC LIMIT 500'
-    ).bind(user, user).all();
+      'SELECT id, sender_id AS sender, recipient_id AS recipient, body, attachment_name AS file, created_at AS created FROM direct_messages WHERE sender_id = ? OR recipient_id = ? OR recipient_id = ? ORDER BY created_at DESC, id DESC LIMIT 500'
+    ).bind(user, user, group).all();
     const version=encodeURIComponent(JSON.stringify([records.results[0]?.id||'',records.results.length,active]));
     if(request.headers.get('X-Message-Version')===version)return new Response(null,{status:204,headers:privateHeaders});
-    return json({ user, directory: active, messages: records.results.reverse(), version, automaticDirectory:Boolean(env.MESSAGE_DIRECTORY) });
+    return json({ user, directory: active, messages: records.results.reverse(), version, automaticDirectory:Boolean(env.MESSAGE_DIRECTORY),group:{id:group,name:'Task Updates',role:'Team group',available:true},name:access.name });
   }
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
   if (request.headers.get('Origin') !== url.origin || !request.headers.get('Content-Type')?.startsWith('application/json')) return json({ error: 'Invalid message request.' }, 403);
@@ -47,8 +48,11 @@ async function messages(request, env, path) {
   if (typeof id !== 'string' || !/^[a-f0-9-]{36}$/i.test(id) || content.length > 5000 || (!content && !file)) return json({ error: 'Enter a message or attach a file.' }, 400);
   if (file && (typeof file.name !== 'string' || !file.name.trim() || file.name.length > 240 || typeof file.data !== 'string' ||
       file.data.length > 940000 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(file.data))) return json({ error: 'Invalid attachment.' }, 400);
-  let recipientAccess=access;
-  if (recipient !== user) {
+  let recipientAccess=access,groupAccess=[];
+  if(recipient===group){
+    groupAccess=access.seats.filter(seat=>seat.email).map(seat=>({...access,...seat,user:'group-member'}));
+  }
+  if (recipient !== user && recipient!==group) {
     if (typeof recipient !== 'string') return json({ error: 'Choose a conversation.' }, 400);
     let target;
     if(env.MESSAGE_DIRECTORY){
@@ -71,8 +75,8 @@ async function messages(request, env, path) {
     for(const link of links){
       if(link.kind==='reply'){
         const reply=await db.prepare('SELECT sender_id, recipient_id FROM direct_messages WHERE id = ?').bind(link.id).first();
-        if(!reply||!((reply.sender_id===user&&reply.recipient_id===recipient)||(reply.sender_id===recipient&&reply.recipient_id===user)))return json({error:'Reply to a message in this conversation.'},403);
-      }else if(!messageLinkedRecord(own,link.kind,link.id)||!messageLinkedRecord(other,link.kind,link.id)){
+        if(!reply||!(recipient===group?reply.recipient_id===group:((reply.sender_id===user&&reply.recipient_id===recipient)||(reply.sender_id===recipient&&reply.recipient_id===user))))return json({error:'Reply to a message in this conversation.'},403);
+      }else if(!messageLinkedRecord(own,link.kind,link.id)||!messageLinkedRecord(other,link.kind,link.id)||groupAccess.some(member=>!messageLinkedRecord(scopedState(member),link.kind,link.id))){
         return json({error:'Both people must have access to each tagged task, project or lead.'},403);
       }
     }

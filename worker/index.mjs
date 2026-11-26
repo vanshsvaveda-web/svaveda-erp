@@ -53,12 +53,14 @@ async function workspace(request, env) {
   }
   if (revision !== access.revision) return json({ error: 'The workspace changed in another tab. Reload to get the latest records.' }, 409);
   if (!command && access.role !== 'Employee') access.priorLeadOwners = new Map((access.state?.leads||[]).map(lead=>[lead.id,assigneeLabel(lead)]));
-  const priorTasks = new Map((access.state?.tasks || []).map(task=>[task.id,{status:task.status,completedAt:task.completedAt,completedBy:task.completedBy,assignedAt:task.assignedAt,statusChangedAt:task.statusChangedAt,owners:assigneeLabel(task)}]));
+  const priorTasks = new Map((access.state?.tasks || []).map(task=>[task.id,{status:task.status,completedAt:task.completedAt,completedBy:task.completedBy,assignedAt:task.assignedAt,statusChangedAt:task.statusChangedAt,statusChangedBy:task.statusChangedBy,owners:assigneeLabel(task)}]));
   const priorLeads = new Map((access.state?.leads||[]).map(lead=>[lead.id,{...lead}]));
+  const priorAttendanceEvents=structuredClone(access.state?.attendanceEvents||[]);
+  const previousAttendance=structuredClone(access.role==='Super Admin'?access.state?.attendance||{}:access.state?.attendanceByUser?.[access.user]||{});
   let next;
   if (command) {
     next = access.state || {...data,seats:access.seats,orgKey:'svaveda'};
-    try {operate(access,next,command)} catch (error) {return json({error:error.message},400)}
+    try {operate(access,next,command,env)} catch (error) {return json({error:error.message},400)}
   } else if (access.role === 'Super Admin') {
     try {
       const seats = data.seats && JSON.stringify(data.seats)!==JSON.stringify(access.seats)
@@ -97,10 +99,10 @@ async function workspace(request, env) {
   for (const task of next.tasks) {
     const prior = priorTasks.get(task.id);
     const now=Date.now();
-    if (assigneeLabel(task) && assigneeLabel(task)!==prior?.owners) task.assignedAt=now;
+    if (assigneeLabel(task) && assigneeLabel(task)!==prior?.owners){task.assignedAt=now;task.assignedBy=access.name;}
     else if (prior?.assignedAt) task.assignedAt=prior.assignedAt;
     else delete task.assignedAt;
-    if (task.status!==prior?.status) task.statusChangedAt=now;
+    if (task.status!==prior?.status){task.statusChangedAt=now;task.statusChangedBy=access.name;}
     else if (prior?.statusChangedAt) task.statusChangedAt=prior.statusChangedAt;
     else delete task.statusChangedAt;
     if (task.status === 'Done' && prior?.status !== 'Done') {
@@ -114,6 +116,18 @@ async function workspace(request, env) {
       delete task.completedAt;
       delete task.completedBy;
     }
+  }
+  next.attendanceEvents=priorAttendanceEvents;
+  const attendance=access.role==='Super Admin'?next.attendance:next.attendanceByUser?.[access.user];
+  if(access.role!=='Founder'&&attendance){
+   const date=todayIST(),before=previousAttendance[date]||{},after=attendance[date]||{};
+   const events=[];
+   if(after.in&&!before.in)events.push('Checked in');
+   if(after.out&&!before.out)events.push('Checked out');
+   if(after.pause&&!before.pause)events.push(after.breakKind==='Lunch'?'Lunch started':'Break started');
+   if(before.pause&&!after.pause)events.push(before.breakKind==='Lunch'?'Lunch ended':'Break ended');
+   for(const kind of events)(next.attendanceEvents||=[]).unshift({id:crypto.randomUUID(),kind,actor:access.name,at:Date.now(),date});
+   if(next.attendanceEvents)next.attendanceEvents=next.attendanceEvents.slice(0,500);
   }
   groupExpertOnboardingTasks(next);
   advanceRecurringTasks(next);
@@ -140,6 +154,7 @@ export default {
       if (!access?.state) return json({error:'Workspace seat required.'},403);
       return runScheduledSheetSync(env,access.workspace);
     }
+    if(path==='/api/notes'||path==='/api/team-attendance')return workspaceExtras(request,env,path);
     if (path === '/api/presence') return workspacePresence(request,env);
     if (path === '/api/sheets/preview') return previewSheet(request,env);
     if (path === '/api/workspace' || path === '/api/messages' || path === '/api/messages/join' || path.startsWith('/api/messages/files/')) {
