@@ -195,7 +195,7 @@ function renderPersonal(){
  <div class="split home-columns day-workspace"><div>
  <article class="panel work-panel"><div class="panel-title"><div><h2>My work</h2><p>One place for everything assigned to you.</p></div><span class="workspace-count">${mine.length} tasks</span></div><div class="toolbar filter-tabs work-tabs" aria-label="My work filters">${tabs}</div>${work}</article>
  ${followUps.length?panel('Follow-ups due',followUps.slice(0,6).map(lead=>listItem(lead.name,'Due '+lead.due,btn('Follow up','outcome',lead.id))).join('')):''}
- </div><aside class="day-side-column" aria-label="Work updates">${notificationPanel()}</aside></div>
+ </div><div class="day-side-column" role="complementary" aria-label="Work updates">${notificationPanel()}</div></div>
  <div class="day-utilities">
  <details class="day-secondary day-schedule" id="day-schedule" ${dayScheduleOpen?'open':''}><summary><span>${workspaceIcon('calendar')} My schedule</span><small>Calendar and tasks</small></summary>${dayAgenda()}</details>
  <details class="day-secondary day-requests"><summary><span>${workspaceIcon('review')} Requests${isEmployee()?'':' and reviews'}</span><small>${isEmployee()?'Leave and requests':reviewRows().length+' awaiting review'}</small></summary>
