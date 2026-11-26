@@ -103,3 +103,18 @@ main>header{height:76px;padding:0 30px;background:#ffffffec;backdrop-filter:blur
 .day-side-column .notification-row p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 @media(max-width:700px){.day-utilities{grid-template-columns:minmax(0,1fr);gap:12px}.day-utilities summary{padding:14px}.day-utilities summary small{font-size:11px}}
 @media(prefers-reduced-motion:reduce){.day-utilities summary::after{transition:none}}
+
+/* Notifications float above the workspace like a notification shade. */
+#notification-overlay{position:fixed;inset:78px 20px auto auto;margin:0;width:min(450px,calc(100vw - 32px));height:auto;max-height:calc(100dvh - 100px);padding:0;border:1px solid var(--line);border-radius:17px;background:#fff;box-shadow:0 20px 70px #261b3638;overflow:hidden}
+#notification-overlay[open]{display:flex;flex-direction:column}
+#notification-overlay::backdrop{background:#24233238;backdrop-filter:blur(3px)}
+.notification-overlay-heading,.notification-overlay-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 16px;flex:none}
+.notification-overlay-heading{border-bottom:1px solid var(--line)}
+.notification-overlay-heading button{border:0;background:transparent;color:var(--accent)}
+.notification-overlay-heading [aria-label]{font-size:24px;line-height:1;min-width:36px;padding:4px}
+.notification-overlay-body{overflow:auto;overscroll-behavior:contain;min-height:0}
+.notification-overlay-body>.panel{border:0;border-radius:0;margin:0;box-shadow:none}
+.notification-overlay-body .notification-row p{display:block;overflow:visible;-webkit-line-clamp:unset}
+.notification-overlay-footer{border-top:1px solid var(--line);justify-content:flex-end}
+.notification-overlay-footer button{font-size:12px}
+@media(max-width:580px){#notification-overlay{inset:66px 12px auto;width:calc(100vw - 24px);max-height:calc(100dvh - 80px);border-radius:14px}.notification-overlay-heading,.notification-overlay-footer{padding:10px 12px}}

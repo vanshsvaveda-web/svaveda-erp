@@ -251,6 +251,7 @@ function render(){
  const alertButton=$('#desktop-alerts');
  alertButton.innerHTML=workspaceIcon('alert')+'<span class="alerts-label">Notifications</span>'+(alertCount?'<span class="notification-count">'+Math.min(alertCount,99)+(alertCount>99?'+':'')+'</span>':'');
  alertButton.setAttribute('aria-label','Notifications'+(alertCount?', '+alertCount+' unread':''));
+ if(notificationOverlay.open)paintNotifications();
  const viewKey=page+(page==='My Day'?'|'+dayTaskQueue:'');
  renderedWorkspacePage=viewKey;
  if(previous!==viewKey&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches&&typeof ui.animate==='function'){
@@ -475,6 +476,7 @@ document.addEventListener('click',async ev=>{
  if(busy)return;
  let {act,key}=b.dataset;
  if(act==='msg-open'){const [kind,recordId]=key.split(':');if(!messageLinkedRecord(data,kind,recordId)){notify('This record is no longer available.');return}act={task:'task',project:'ops-project',lead:'lead'}[kind];key=recordId;}
+ if(b.dataset.notificationIds||b.dataset.notificationId){beginNotificationHistory();if(notificationOverlay.open){notificationOverlay.close();page=homePage();render();}}
  if(b.dataset.notificationIds){markNotifications(JSON.parse(b.dataset.notificationIds));b.closest('.notification-row')?.removeAttribute('data-unread');}
  if(b.dataset.notificationId){markNotifications([b.dataset.notificationId]);b.closest('.notification-row')?.removeAttribute('data-unread');}
  if(act==='notifications-read'){markNotifications(activityAlerts(data).map(item=>item.id));render();return;}
@@ -483,9 +485,10 @@ document.addEventListener('click',async ev=>{
   form('Disconnect Google Sheet','<p>Stop automatic pulls from this Sheet. Imported leads stay in the workspace.</p>','Disconnect',()=>{delete data.sheetLink;delete data.sheetSyncedAt;delete data.sheetSync;sheetError=''});
   return;
  }
- if(act==='desktop-inbox'){if(modal.open)modal.close();page='Inbox';render();return}
+ if(act==='notification-home'){closeNotificationsHome();return}
+ if(act==='desktop-inbox'){openNotifications();return}
 
- if(act==='inbox-refresh'){await load();return}
+ if(act==='inbox-refresh'){await refreshAlerts();if(notificationOverlay.open)paintNotifications();else render();return}
  if(act==='template'&&!isEmployee()){chooseTemplate(key);return}
  if(act==='personal-tasks'||act==='personal-lead-tasks'){personalTaskScope=true;taskFilter=key;page=act==='personal-lead-tasks'?'Lead Tasks':'Tasks';render();return}
  if(act==='personal-calendar'||act==='nav'&&key==='Calendar'){
@@ -812,6 +815,51 @@ function notificationPanel(full=false){
  };
  return panel('Notifications'+(unread?' · '+unread+' unread':''),(section('Needs action',needsAction)+section('Updates',item=>!needsAction(item))||empty('You’re caught up.'))+`<div class="panel-foot actions">${unread?btn('Mark all read','notifications-read'):''}${full?'':btn('View all','desktop-inbox')}</div>`);
 }
+const notificationOverlay=document.createElement('dialog');
+notificationOverlay.id='notification-overlay';
+notificationOverlay.setAttribute('aria-label','Notifications');
+document.body.append(notificationOverlay);
+let notificationSession=false;
+const homePage=()=>isFounder()?'Overview':'My Day';
+function beginNotificationHistory(){
+ if(notificationSession&&history.state?.svavedaNotifications)return;
+ history.pushState({...history.state,svavedaNotifications:true},'');
+ notificationSession=true;
+}
+function paintNotifications(){
+ const scroll=notificationOverlay.querySelector('.notification-overlay-body')?.scrollTop||0;
+ notificationOverlay.innerHTML=`<div class="notification-overlay-heading">${btn('← Back to Home','notification-home')}<button type="button" data-act="notification-home" aria-label="Close notifications">×</button></div><div class="notification-overlay-body">${notificationPanel(true)}</div><div class="notification-overlay-footer">${btn('Refresh','inbox-refresh')}${btn('Enable desktop alerts','desktop-enable')}</div>`;
+ notificationOverlay.querySelector('.notification-overlay-body').scrollTop=scroll;
+}
+function openNotifications(){
+ if(busy)return;
+ if(modal.open)modal.close();
+ beginNotificationHistory();paintNotifications();
+ if(!notificationOverlay.open)notificationOverlay.showModal();
+ void refreshAlerts();
+}
+function returnFromNotifications(){
+ notificationSession=false;
+ if(notificationOverlay.open)notificationOverlay.close();
+ if(modal.open)modal.close();
+ page=homePage();render();ui.focus({preventScroll:true});
+}
+function closeNotificationsHome(){
+ if(busy)return;
+ if(notificationSession&&history.state?.svavedaNotifications)history.back();
+ else returnFromNotifications();
+}
+window.addEventListener('popstate',event=>{
+ if(!notificationSession||event.state?.svavedaNotifications)return;
+ if(busy){history.pushState({...history.state,svavedaNotifications:true},'');notify('Wait for the current save to finish.');return;}
+ returnFromNotifications();
+});
+notificationOverlay.addEventListener('cancel',event=>{event.preventDefault();closeNotificationsHome()});
+notificationOverlay.addEventListener('click',event=>{
+ if(event.target!==notificationOverlay)return;
+ const box=notificationOverlay.getBoundingClientRect();
+ if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)closeNotificationsHome();
+});
 const workspacePollHeaders=()=>({'X-Workspace-Version':encodeURIComponent(JSON.stringify([revision,role,currentName]))});
 async function updateWorkspace(){
  const response=await fetch('/api/workspace',{headers:workspacePollHeaders()});
@@ -852,7 +900,7 @@ async function refreshAlerts(baseline=false){
   if(previous&&!baseline&&added.length&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
    const categories=[...new Set(added.map(item=>item.label))];
    const notification=new Notification('SvaVeda Workspace',{body:categories.length===1?categories[0]:added.length+' new workspace updates',tag:'svaveda-workspace'});
-   notification.onclick=()=>{window.focus();if(!modal.open&&!busy){page=categories.length===1&&categories[0]==='New workspace message'?'Messages':'Inbox';render()}notification.close()};
+   notification.onclick=()=>{window.focus();if(!modal.open&&!busy)openNotifications();notification.close()};
   }
   localStorage.setItem(key,JSON.stringify([...seen,...added.map(item=>item.id)].slice(-2000)));
   if(!busy&&!modal.open&&!jump.open&&revision===startRevision&&result.revision>revision&&page!=='Messages'&&page!=='Integrations'){
@@ -870,6 +918,6 @@ async function enableDesktopNotifications(){
   return;
  }
 }
-$('#desktop-alerts').onclick=()=>{page='Inbox';render();void refreshAlerts();};
+$('#desktop-alerts').onclick=openNotifications;
 setInterval(()=>{void sendWorkspacePresence();if(page==='Attendance'&&isSuperAdmin())void refreshPresencePanel();void refreshAlerts();void processSheetQueue().finally(autoPullSheet)},60000);
 load();
