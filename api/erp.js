@@ -2,7 +2,7 @@ import { isIP } from 'node:net';
 import { timingSafeEqual } from 'node:crypto';
 import worker from '../dist/server/index.js';
 import { database, withSheetWriteLock } from '../vercel/database.js';
-import { identity, loginPage, signIn, signOut } from '../vercel/auth.js';
+import { identity, loginPage, signIn, signOut, withSessionCookies } from '../vercel/auth.js';
 import { workspaceMessageDirectory } from '../vercel/message-directory.js';
 
 export default {
@@ -43,9 +43,10 @@ export default {
       const headers = new Headers(request.headers);
       headers.delete('oai-authenticated-user-id');
       headers.delete('oai-authenticated-user-email');
+      const sessionCookies=[];
       if(path==='/'||path.startsWith('/api/')){
-        const user=await identity(request);
-        if (!user) return path==='/'?loginPage():Response.json({error:'Sign in at the workspace home page.'},{status:401,headers:{'Cache-Control':'no-store'}});
+        const user=await identity(request,sessionCookies);
+        if (!user) return withSessionCookies(path==='/'?loginPage():Response.json({error:'Sign in at the workspace home page.'},{status:401,headers:{'Cache-Control':'no-store'}}),sessionCookies);
         headers.set('oai-authenticated-user-id',user.id);
         headers.set('oai-authenticated-user-email',user.email);
       }
@@ -56,7 +57,8 @@ export default {
       const requestIp=request.headers.get('x-vercel-forwarded-for')?.trim();
       const clientIp=process.env.VERCEL==='1'&&requestIp&&isIP(requestIp)?requestIp:null;
       const run=DB=>worker.fetch(forwarded,{DB,MESSAGE_DIRECTORY:access=>workspaceMessageDirectory(access,DB),CLIENT_IP:clientIp,GOOGLE_SHEETS_SERVICE_ACCOUNT:process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT,SHEET_WRITES_SERIALIZED:path==='/api/sheets/process'});
-      return path==='/api/sheets/process'?await withSheetWriteLock(run):await run(database);
+      const response=path==='/api/sheets/process'?await withSheetWriteLock(run):await run(database);
+      return withSessionCookies(response,sessionCookies);
     }catch(error){
       console.error('Vercel ERP request failed', error.code || error.name, error.message?.split('\n')[0]?.replace(/postgres(?:ql)?:\/\/\S+/g,'[connection redacted]'));
       return new Response('Workspace service unavailable.',{status:503,headers:{'Cache-Control':'no-store'}});
