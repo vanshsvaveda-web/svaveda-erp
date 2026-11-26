@@ -171,7 +171,7 @@ function attendanceCard(){
  return `<div class="item"><strong>${state}</strong><p>Check-in ${clock(a.in)} · Worked ${work}</p><div class="actions">${a.out?'':!a.in?btn('Check in','attendance','in',true):btn(a.pause?'End break':'Start break','attendance','break')+btn('Check out','attendance','out',true)}</div></div>`;
 }
 const taskRows=tasks=>tasks.length?tasks.map(t=>`<div class="item task-line"><div><button class="link task-name" data-act="task" data-key="${e(t.id)}">${e(t.title)}</button><small>${[assigneeLabel(t)||'Unassigned',t.due?'Due '+t.due:'No due date',t.priority].filter(Boolean).map(e).join(' · ')}</small></div>${pill(t.status)}</div>`).join(''):empty('No tasks in this view.');
-let dayTaskQueue, agendaDate, fullCalendarOpen=false;
+let dayTaskQueue, agendaDate, fullCalendarOpen=false, dayScheduleOpen=false;
 function renderPersonal(){
  const today=day(), mine=data.tasks.filter(task=>assignedTo(task,currentName));
  const active=mine.filter(task=>!['Done','In review'].includes(task.status));
@@ -195,10 +195,12 @@ function renderPersonal(){
  <div class="split home-columns day-workspace"><div>
  <article class="panel work-panel"><div class="panel-title"><div><h2>My work</h2><p>One place for everything assigned to you.</p></div><span class="workspace-count">${mine.length} tasks</span></div><div class="toolbar filter-tabs work-tabs" aria-label="My work filters">${tabs}</div>${work}</article>
  ${followUps.length?panel('Follow-ups due',followUps.slice(0,6).map(lead=>listItem(lead.name,'Due '+lead.due,btn('Follow up','outcome',lead.id))).join('')):''}
- </div><div class="day-side-column">${notificationPanel()}${panel('My schedule',dayAgenda())}
- ${isFounder()?'':panel('My attendance',attendanceCard())}</div></div>
- <details class="day-secondary"><summary>Requests${isEmployee()?'':' and reviews'}</summary>
- <div class="split"><div>${personalRequests()}</div><div>${!isEmployee()?panel('Pending reviews',reviewRows().slice(0,3).map(item=>listItem(item.title,item.owner||'Unassigned',btn('Review','ops-decision',item.kind+'|'+item.id))).join('')||empty('Nothing waiting for review.')):''}</div></div></details>`;
+ </div><aside class="day-side-column" aria-label="Work updates">${notificationPanel()}</aside></div>
+ <div class="day-utilities">
+ <details class="day-secondary day-schedule" id="day-schedule" ${dayScheduleOpen?'open':''}><summary><span>${workspaceIcon('calendar')} My schedule</span><small>Calendar and tasks</small></summary>${dayAgenda()}</details>
+ <details class="day-secondary day-requests"><summary><span>${workspaceIcon('review')} Requests${isEmployee()?'':' and reviews'}</span><small>${isEmployee()?'Leave and requests':reviewRows().length+' awaiting review'}</small></summary>
+ <div class="split"><div>${personalRequests()}</div><div>${!isEmployee()?panel('Pending reviews',reviewRows().slice(0,3).map(item=>listItem(item.title,item.owner||'Unassigned',btn('Review','ops-decision',item.kind+'|'+item.id))).join('')||empty('Nothing waiting for review.')):''}</div></div></details></div>`;
+ $('#day-schedule').ontoggle=event=>{dayScheduleOpen=event.target.open};
 }
 
 function dayTaskRow(task){
@@ -800,7 +802,7 @@ function notificationPanel(full=false){
  const items=[...grouped.values()].sort((a,b)=>Number(b.unread)-Number(a.unread)||b.at-a.at);
  const needsAction=item=>/^(task-due:|lead:|assigned:|rework:|review:|review-request:)/.test(item.id);
  const unread=items.filter(item=>item.unread).length;
- const rows=items.slice(0,full?100:6);
+ const rows=items.slice(0,full?100:3);
  const section=(label,predicate)=>{
   const matches=rows.filter(predicate);if(!matches.length)return '';
   return '<h3 class="notification-section-label">'+label+'</h3>'+matches.map(item=>{
