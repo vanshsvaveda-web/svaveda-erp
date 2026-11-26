@@ -244,6 +244,7 @@ let renderedWorkspacePage;
 function render(){
  const previous=renderedWorkspacePage;
  renderWorkspace();
+ ui.querySelectorAll('table').forEach(table=>{const labels=[...table.querySelectorAll('thead th')].map(th=>th.textContent.trim());if(!labels.length)return;table.classList.add('mobile-record-table');table.querySelectorAll('tbody tr').forEach(row=>[...row.cells].forEach((cell,i)=>cell.dataset.label=labels[i]||''));});
  const signOut=document.querySelector('.header-actions form[action="/api/sign-out"] button');
  if(signOut){signOut.innerHTML=workspaceIcon('logout')+'<span class="sign-out-label">Sign out</span>';signOut.setAttribute('aria-label','Sign out');}
  const read=readNotifications();
@@ -270,6 +271,10 @@ function renderWorkspace(){
   const active=module.name===group;
   return `<button ${active?'class="active" aria-current="page"':''} data-act="nav" data-key="${group==='Sales'?salesLastPage:name}"><i aria-hidden="true">${workspaceIcon(icon)}</i>${labels[name]||name}</button>`;
  }).join('');
+ const mobilePages=[[isFounder()?'Overview':'My Day','home','Home'],['Tasks','tasks','Work'],[salesLastPage,'sales','Sales'],['Messages','messages','Chat']];
+ $('#mobile-nav').innerHTML=mobilePages.map(([target,icon,label])=>`<button type="button" data-act="nav" data-key="${target}" ${module.name==={Home:'Home',Work:'Operations',Sales:'Sales',Chat:'Messages'}[label]?'aria-current="page"':''}>${workspaceIcon(icon)}<span>${label}</span></button>`).join('')+`<button type="button" data-act="mobile-more" aria-label="More navigation" aria-expanded="${$('.workspace-sidebar').classList.contains('menu-open')}">${workspaceIcon('team')}<span>More</span></button>`;
+ const signOutForm=document.querySelector('.header-actions form[action="/api/sign-out"]');
+ if(signOutForm)$('aside footer').insertAdjacentHTML('beforeend','<form class="mobile-sign-out" method="post" action="/api/sign-out"><button>Sign out</button></form>');
  const todayAttendance=data.attendance[day()]||{};
  $('#attendance-header').hidden=isFounder();
  $('#attendance-header').innerHTML=isFounder()?'':todayAttendance.out?'<span>Checked out</span>':todayAttendance.in?
@@ -485,6 +490,8 @@ document.addEventListener('click',async ev=>{
   form('Disconnect Google Sheet','<p>Stop automatic pulls from this Sheet. Imported leads stay in the workspace.</p>','Disconnect',()=>{delete data.sheetLink;delete data.sheetSyncedAt;delete data.sheetSync;sheetError=''});
   return;
  }
+ if(act==='mobile-search'){closeNavigation();openJump();return}
+ if(act==='mobile-more'){$('#nav-toggle').click();return}
  if(act==='notification-home'){closeNotificationsHome();return}
  if(act==='desktop-inbox'){openNotifications();return}
 
@@ -708,14 +715,19 @@ document.addEventListener('keydown',event=>{
   if(jump.open)jump.close();else openJump();
  }
 });
-function closeNavigation(){
- $('.workspace-sidebar').classList.remove('menu-open');
- $('#nav-toggle').setAttribute('aria-expanded','false');
-}
-$('#nav-toggle').onclick=()=>{
- const shown=$('.workspace-sidebar').classList.toggle('menu-open');
+function setNavigationOpen(shown){
+ $('.workspace-sidebar').classList.toggle('menu-open',shown);
+ document.body.classList.toggle('mobile-menu-open',shown);
+ $('main').inert=shown&&window.matchMedia('(max-width:900px)').matches;
  $('#nav-toggle').setAttribute('aria-expanded',String(shown));
-};
+ $('#mobile-nav [data-act="mobile-more"]')?.setAttribute('aria-expanded',String(shown));
+}
+function closeNavigation(){setNavigationOpen(false)}
+$('#nav-toggle').onclick=()=>setNavigationOpen(!$('.workspace-sidebar').classList.contains('menu-open'));
+$('#navigation-scrim').onclick=closeNavigation;
+window.matchMedia('(max-width:900px)').addEventListener('change',closeNavigation);
+document.addEventListener('keydown',event=>{if(event.key==='Escape')closeNavigation()});
+
 
 function teamDirectory(){
  if(isEmployee())return '';

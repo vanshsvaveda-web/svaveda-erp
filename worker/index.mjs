@@ -151,7 +151,7 @@ export default {
     const asset = Object.hasOwn(assets, path) ? assets[path] : null;
     if (!asset) return new Response('Page not found', { status: 404 });
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405 });
-    return new Response(request.method === 'HEAD' ? null : asset.body, {
+    return new Response(request.method === 'HEAD' ? null : asset.encoding==='base64'?Uint8Array.from(atob(asset.body),c=>c.charCodeAt(0)):asset.body, {
       headers: { ...privateHeaders, 'Content-Type': asset.mime }
     });
   }
