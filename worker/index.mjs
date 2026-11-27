@@ -53,6 +53,7 @@ async function workspace(request, env) {
   }
   if (revision !== access.revision) return json({ error: 'The workspace changed in another tab. Reload to get the latest records.' }, 409);
   if (!command && access.role !== 'Employee') access.priorLeadOwners = new Map((access.state?.leads||[]).map(lead=>[lead.id,assigneeLabel(lead)]));
+  const protectedDeletedRecords=structuredClone(access.state?.deletedRecords||[]);
   const priorTasks = new Map((access.state?.tasks || []).map(task=>[task.id,{status:task.status,completedAt:task.completedAt,completedBy:task.completedBy,assignedAt:task.assignedAt,statusChangedAt:task.statusChangedAt,statusChangedBy:task.statusChangedBy,owners:assigneeLabel(task)}]));
   const priorLeads = new Map((access.state?.leads||[]).map(lead=>[lead.id,{...lead}]));
   const priorAttendanceEvents=structuredClone(access.state?.attendanceEvents||[]);
@@ -70,6 +71,13 @@ async function workspace(request, env) {
       return json({ error:error.message }, 400);
     }
   } else next = mergeTeamState(access,data);
+  if(!command){
+    next.deletedRecords=protectedDeletedRecords;
+    if([...priorLeads.keys()].some(id=>!next.leads.some(lead=>lead.id===id))||[...priorTasks.keys()].some(id=>!next.tasks.some(task=>task.id===id)))
+      return json({error:'Use the Super Admin Delete action to remove tasks or leads.'},403);
+    if(next.leads.some(lead=>!priorLeads.has(lead.id)&&deletedSheetLead(next,sheetPhone(lead.phone))))
+      return json({error:'This lead is in Deleted items. Ask the Super Admin to restore it.'},400);
+  }
   if (!command && access.role !== 'Employee' && access.state) {
     if (access.role === 'Super Admin' && JSON.stringify(next.seats)!==JSON.stringify(access.seats)) audit(next,access,'Updated role seats','Roles & Access');
     for (const lead of next.leads) {
@@ -82,7 +90,8 @@ async function workspace(request, env) {
   }
   next.sheetQueue=Object.assign(Object.create(null),access.state?.sheetQueue);
   if(next.sheetLink!==access.state?.sheetLink)next.sheetQueue=Object.create(null);
-  if(next.sheetLink){
+  for(const id of Object.keys(next.sheetQueue))if(!next.leads.some(lead=>lead.id===id))delete next.sheetQueue[id];
+  if(next.sheetLink&&command?.type!=='record-restore'){
     for(const lead of next.leads){
       if(typeof lead.id!=='string'||!lead.id||lead.id.length>128)continue;
       const prior=priorLeads.get(lead.id);

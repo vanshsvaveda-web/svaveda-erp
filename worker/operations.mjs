@@ -9,7 +9,46 @@ function audit(state,access,action,subject) {
   state.activity = [{actor:access.name,action,subject,at:Date.now()},...(state.activity||[])].slice(0,100);
 }
 
+
+function deleteWorkspaceRecord(access,state,command){
+ if(access.role!=='Super Admin')throw Error('Only the Super Admin can delete or restore tasks and leads.');
+ if(command.type==='record-restore'){
+  const item=(state.deletedRecords||[]).find(entry=>entry.id===command.id);
+  if(!item)throw Error('This deleted item is unavailable.');
+  const key=item.kind==='lead'?'leads':'tasks',record=structuredClone(item.record),tasks=structuredClone(item.tasks||[]);
+  if(state[key].some(value=>value.id===record.id)||tasks.some(task=>state.tasks.some(value=>value.id===task.id)))throw Error('A record with this identifier already exists.');
+  if(item.kind==='lead'&&state.leads.some(lead=>[lead.phone,lead.sheetSnapshot?.phone].some(value=>value&&[record.phone,record.sheetSnapshot?.phone].some(v=>v&&sheetPhone(v)===sheetPhone(value)))))throw Error('A lead with this phone already exists. Review it before restoring.');
+  if(item.kind==='task'&&record.lead&&!state.leads.some(lead=>lead.id===record.lead))throw Error('Restore the linked lead before restoring this task.');
+  if(item.kind==='task'){
+   const lead=state.leads.find(lead=>lead.id===record.lead);
+   if(lead?.suppressedTask?.taskId===record.id)delete lead.suppressedTask;
+  }
+  state[key].unshift(record);if(tasks.length)state.tasks.unshift(...tasks);
+  state.deletedRecords=state.deletedRecords.filter(entry=>entry.id!==item.id);
+  audit(state,access,'Restored '+item.kind,record.name||record.title);
+  return;
+ }
+ if(!['task','lead'].includes(command.kind))throw Error('Choose a task or lead to delete.');
+ const key=command.kind==='lead'?'leads':'tasks',record=state[key].find(item=>item.id===command.id);
+ if(!record)throw Error('This record is unavailable. Refresh the workspace.');
+ const snapshot=structuredClone(record);
+ const stopTimer=task=>{if(task.timer){task.elapsed=(task.elapsed||0)+Math.max(0,Date.now()-task.timer);delete task.timer;}return task};
+ if(command.kind==='task')stopTimer(snapshot);
+ const tasks=command.kind==='lead'?state.tasks.filter(task=>task.lead===record.id).map(task=>stopTimer(structuredClone(task))):[];
+ (state.deletedRecords||=[]).unshift({id:crypto.randomUUID(),kind:command.kind,record:snapshot,tasks,deletedAt:Date.now(),deletedBy:access.name});
+ state[key]=state[key].filter(item=>item.id!==record.id);
+ if(command.kind==='lead'){
+  state.tasks=state.tasks.filter(task=>task.lead!==record.id);
+  if(state.sheetQueue)delete state.sheetQueue[record.id];
+ }else if(record.lead){
+  const lead=state.leads.find(item=>item.id===record.lead);
+  if(lead)lead.suppressedTask={taskId:record.id,action:lead.action||'',due:lead.due||''};
+ }
+ audit(state,access,'Deleted '+command.kind,record.name||record.title);
+}
+
 function operate(access,state,command,env={}) {
+  if(command.type==='record-delete'||command.type==='record-restore'){deleteWorkspaceRecord(access,state,command);return;}
   const employee = access.role === 'Employee';
   if(command.type==='task-create'){
     const title=cleanText(command.title,200);if(!title||typeof command.id!=='string'||! /^[a-f0-9-]{36}$/i.test(command.id))throw Error('Enter a task description.');

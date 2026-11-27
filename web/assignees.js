@@ -56,3 +56,7 @@ function dailyWorkProgress(state,name,today){
  const pending=mine.filter(task=>task.status!=='Done'&&(!task.due||task.due<=today)).length;
  return {done,total:pending+done};
 }
+
+function leadTaskSuppressed(lead){
+ return Boolean(lead?.suppressedTask&&lead.suppressedTask.action===(lead.action||'')&&lead.suppressedTask.due===(lead.due||''));
+}

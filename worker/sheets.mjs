@@ -193,6 +193,7 @@ function mergeBackgroundSheet(state,rows){
     const fields=Object.fromEntries(Object.entries(columns).map(([field,column])=>[field,String(row[column]??'').trim()]));
     if(!fields.name&&!fields.phone)continue;
     const phone=sheetPhone(fields.phone),found=matches.get(phone)||[];
+    if(deletedSheetLead(state,phone)){result.skipped++;continue;}
     if(!fields.name||!phone||counts.get(phone)>1||found.length>1){result.skipped++;continue;}
     const existing=found[0];
     if(existing&&state.sheetQueue?.[existing.id]){result.skipped++;continue;}
@@ -226,6 +227,7 @@ function mergeBackgroundSheet(state,rows){
     }
     lead.sheetSnapshot={...fields,owner};lead.sheetFields=sheetFields;
     if(changed){
+      if(leadTaskSuppressed(lead))continue;
       const active=state.tasks.filter(task=>task.lead===lead.id&&task.status!=='Done');
       if(!lead.owner||!lead.action||terminalLeadStatuses.has(lead.status)){
         for(const task of active){task.status='Done';task.completedAt=Date.now();task.completedBy='Google Sheets sync';}
@@ -264,6 +266,22 @@ async function runScheduledSheetSync(env,workspace){
     else outcome.failed++;
   }
   return json(outcome);
+}
+
+
+async function firstFreeLeadRow(values,headerRow,rowCount,columnCount,serialColumn){
+ const lastColumn=sheetColumn(columnCount-1);
+ for(let first=headerRow+1;first<=rowCount;first+=100){
+  const last=Math.min(first+99,rowCount),rows=await values('A'+first+':'+lastColumn+last);
+  for(let row=first;row<=last;row++){
+   if(!(rows[row-first]||[]).some((value,index)=>index!==serialColumn&&String(value??'').trim()!==''))return row;
+  }
+ }
+ return undefined;
+}
+function deletedSheetLead(state,phone){
+ return (state.deletedRecords||[]).some(item=>item.kind==='lead'&&
+  [item.record.phone,item.record.sheetSnapshot?.phone].some(value=>sheetPhone(value)&&sheetPhone(value)===phone));
 }
 
 async function syncSheetLead(access,env,id){
@@ -350,26 +368,10 @@ async function syncSheetLead(access,env,id){
       for(const [field,column] of Object.entries(columns)){
         if(column>=0)cells[column]=sheetLeadValue(lead,field);
       }
-      const nameColumn=sheetColumn(columns.name);
-      for(let last=rowCount;last>lastLeadRow;){
-        const first=Math.max(lastLeadRow+1,last-999);
-        const names=await values(nameColumn+first+':'+nameColumn+last);
-        const populated=names.findLastIndex(row=>String(row[0]??'').trim()!=='');
-        if(populated>=0){lastLeadRow=first+populated;break;}
-        last=first-1;
-      }
-      let target;
-      const lastColumn=sheetColumn(columnCount-1);
-      for(let first=lastLeadRow+1;first<=rowCount&&target===undefined;first+=100){
-        const last=Math.min(first+99,rowCount);
-        const rows=await values('A'+first+':'+lastColumn+last);
-        for(let row=first;row<=last;row++){
-          if(!(rows[row-first]||[]).some((value,index)=>index!==serialColumn&&String(value??'').trim()!=='')){
-            target=row;
-            break;
-          }
-        }
-      }
+      // Reuse the first entirely unused data row, including gaps inside the table.
+      // Serial numbers, formatting and empty validation dropdowns do not occupy a row.
+      // Formula cells and values in unmapped columns still protect a row from overwrite.
+      const target=await firstFreeLeadRow(values,headerRow,rowCount,columnCount,serialColumn);
       const cellValues=cells.map(value=>value?{userEnteredValue:{stringValue:value}}:{});
       const fields='userEnteredValue';
       const requests=target===undefined?

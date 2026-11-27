@@ -147,7 +147,7 @@ function form(title,fields,submit,handler,size='regular',onSaved){
    await save(command);
    if(onSaved)onSaved();
    if(command?.type==='work-comment'){modal.close();render();openWorkDiscussion(command.kind+':'+command.id);notify('Update posted');return}
-   modal.close();render();notify(data.leads.some(lead=>['queued','retrying'].includes(lead.syncState?.status))?'Saved to ERP · Sheet changes sync automatically':'Saved to ERP');
+   modal.close();render();if(command?.type==='record-delete'){notify('Deleted from ERP · Restore from Settings → Deleted items');return}if(command?.type==='record-restore'){notify('Restored to the workspace');return}notify(data.leads.some(lead=>['queued','retrying'].includes(lead.syncState?.status))?'Saved to ERP · Sheet changes sync automatically':'Saved to ERP');
   }catch(problem){
    restoreDraft(data,committed);
    error.textContent=problem.message;
@@ -175,7 +175,7 @@ function attendanceCard(){
  const work=a.in?duration(Math.max(0,(a.out||Date.now())-a.in-(a.breakMs||0)-(a.pause?Date.now()-a.pause:0))):'0h 0m';
  return `<div class="item"><strong>${state}</strong><p>Check-in ${clock(a.in)} · Worked ${work}</p><div class="actions">${a.out?'':!a.in?btn('Check in','attendance','in',true):btn(a.pause?'End break':'Start break','attendance','break')+(!a.pause?btn('Lunch','attendance','lunch'):'')+btn('Check out','attendance','out',true)}</div></div>`;
 }
-const taskRows=tasks=>tasks.length?tasks.map(t=>`<div class="item task-line"><div><button class="link task-name" data-act="task" data-key="${e(t.id)}">${e(t.title)}</button><small>${[assigneeLabel(t)||'Unassigned',t.due?'Due '+t.due:'No due date',t.priority].filter(Boolean).map(e).join(' · ')}</small></div>${pill(t.status)}</div>`).join(''):empty('No tasks in this view.');
+const taskRows=tasks=>tasks.length?tasks.map(t=>`<div class="item task-line"><div><button class="link task-name" data-act="task" data-key="${e(t.id)}">${e(t.title)}</button><small>${[assigneeLabel(t)||'Unassigned',t.due?'Due '+t.due:'No due date',t.priority].filter(Boolean).map(e).join(' · ')}</small></div><div class="actions">${pill(t.status)}${recordDeleteButton('task',t.id)}</div></div>`).join(''):empty('No tasks in this view.');
 let dayTaskQueue, agendaDate, fullCalendarOpen=false, dayScheduleOpen=false;
 function renderPersonal(){renderPersonalPremium()}
 let personalShowAll=false,personalNotifications=false;
@@ -188,7 +188,7 @@ function dayTaskRow(task){
  const owners=assignees(task),lead=task.lead&&data.leads.find(item=>item.id===task.lead);
  if(lead)detail.push(lead.researchReturnTo?'Research handoff':'Follow-up #'+(loggedFollowUps(lead).length+1));
  if(owners.length>1)detail.push('Responsible: '+owners[0]);
- return `<div class="item task-line ${done?'task-finished':''}"><span class="task-state-icon ${done?'is-done':''}">${workspaceIcon(done?'check':'tasks')}</span><div class="task-line-main"><button class="link task-name" data-act="${lead&&!done?'outcome':'task'}" data-key="${e(lead&&!done?lead.id:task.id)}">${e(task.title)}</button><div class="task-metadata">${project?'<span class="project-chip">'+e(project.name)+'</span>':''}<small class="${!done&&task.due&&task.due<day()?'task-due-late':''}">${e(detail.filter(Boolean).join(' · '))}</small></div></div><div class="task-owners" aria-label="${e(owners.join(', '))}">${owners.slice(0,3).map(owner=>'<span title="'+e(owner)+'">'+e(owner.split(/\s+/).slice(0,2).map(part=>part[0]).join(''))+'</span>').join('')}${owners.length>3?'<span>+'+(owners.length-3)+'</span>':''}</div><div class="actions">${pill(task.status)}${lead&&!done?btn(lead.researchReturnTo?'Complete details':'Follow up','outcome',lead.id):''}${canStart?btn(running?'Pause':task.status==='In progress'?'Resume':'Start','day-task-timer',task.id):''}${canStart?btn(isEmployee()?'Submit work':'Finish','task',task.id):''}</div></div>`;
+ return `<div class="item task-line ${done?'task-finished':''}"><span class="task-state-icon ${done?'is-done':''}">${workspaceIcon(done?'check':'tasks')}</span><div class="task-line-main"><button class="link task-name" data-act="${lead&&!done?'outcome':'task'}" data-key="${e(lead&&!done?lead.id:task.id)}">${e(task.title)}</button><div class="task-metadata">${project?'<span class="project-chip">'+e(project.name)+'</span>':''}<small class="${!done&&task.due&&task.due<day()?'task-due-late':''}">${e(detail.filter(Boolean).join(' · '))}</small></div></div><div class="task-owners" aria-label="${e(owners.join(', '))}">${owners.slice(0,3).map(owner=>'<span title="'+e(owner)+'">'+e(owner.split(/\s+/).slice(0,2).map(part=>part[0]).join(''))+'</span>').join('')}${owners.length>3?'<span>+'+(owners.length-3)+'</span>':''}</div><div class="actions">${pill(task.status)}${lead&&!done?btn(lead.researchReturnTo?'Complete details':'Follow up','outcome',lead.id):''}${canStart?btn(running?'Pause':task.status==='In progress'?'Resume':'Start','day-task-timer',task.id):''}${canStart?btn(isEmployee()?'Submit work':'Finish','task',task.id):''}${recordDeleteButton('task',task.id)}</div></div>`;
 }
 function dayAgenda(){
  const today=day();
@@ -282,7 +282,7 @@ function renderWorkspace(){
   <td>${inlineLeadContact(lead,context)}</td>
   <td>${pill(lead.status)}</td><td>${assigneeLinks(lead)}</td>
   <td>${lead.action?`<strong>${e(lead.action)}</strong><small>Follow-up #${loggedFollowUps(lead).length+1} · ${loggedFollowUps(lead).length} logged</small>`:'<span class="muted">—</span>'}${due?`<small>${e(due)}</small>`:''}</td>
-  <td><div class="lead-row-actions">${checkbox?btn(lead.owner?'Reassign':'Assign','assign',lead.id):''}${btn('Follow up','outcome',lead.id)}</div></td></tr>`;
+  <td><div class="lead-row-actions">${checkbox?btn(lead.owner?'Reassign':'Assign','assign',lead.id):''}${btn('Follow up','outcome',lead.id)}${recordDeleteButton('lead',lead.id)}</div></td></tr>`;
  });
  const caption=visible.length?`Showing ${start+1}–${start+shown.length} of ${visible.length}`:'0 leads';
  const pager=`<div class="lead-pagination"><span>${caption}</span><div><button data-act="lead-page" data-key="-1" ${leadPage===1?'disabled':''}>Previous</button><span>${leadPage} / ${totalPages}</span><button data-act="lead-page" data-key="1" ${leadPage===totalPages?'disabled':''}>Next</button></div></div>`;
@@ -349,6 +349,7 @@ function renderWorkspace(){
  }
 }
 function makeTask(l){
+ if(leadTaskSuppressed(l))return;
  const active=data.tasks.filter(t=>t.lead===l.id&&t.status!=='Done');
  if(!l.owner||!l.action||['Do not contact','Not interested','Invalid number','Onboarded'].includes(l.status)){active.forEach(t=>t.status='Done');return}
  const fields={title:l.action+' · '+l.name,owner:l.owner,owners:assignees(l),due:l.due,priority:l.priority||'Medium',note:l.instructions||'',lead:l.id};
@@ -400,6 +401,7 @@ function importCsv(text,source='Sheet CSV'){
  const fields=Object.fromEntries(Object.entries(columns).map(([k,i])=>[k,(row[i]||'').trim()]));
  if(!fields.name&&!fields.phone)continue;
  const phone=normalized(fields.phone);
+ if((data.deletedRecords||[]).some(item=>item.kind==='lead'&&[item.record.phone,item.record.sheetSnapshot?.phone].some(value=>value&&normalized(value)===phone))){skipped++;continue;}
  if(!fields.name||!phone||seen.has(phone)){skipped++;continue}
  seen.add(phone);
  const existing=byPhone.get(phone);
@@ -534,6 +536,7 @@ document.addEventListener('click',async ev=>{
  select('Pipeline Status','sheetPipeline',options(['','Hot','In Progress','Cold'],l.sheetPipeline))+
  select('Interest','sheetInterest',options(['','Yes','No','Maybe'],l.sheetInterest)):'')+leadSheetDetails(l)+'</details>'+history,
  'Save lead',v=>{if(v.owners.length&&!v.action)v.action='Initial call';if(v.owners.length&&!v.due)v.due=day();v.owners=responsibleFirst(v.owners,v.responsible);delete v.responsible;setLead(l,v)});
+ if(key&&isSuperAdmin())modal.querySelector('.popup-actions').insertAdjacentHTML('afterbegin',recordDeleteButton('lead',l.id));
 
  }
  if(act==='assign'){
@@ -597,6 +600,7 @@ document.addEventListener('click',async ev=>{
  },'compact');
  if(key&&t.status!=='Done')taskFooterAction('Mark complete','Done',true);
  if(key)addDiscussionAction('task',t.id);
+ if(key&&isSuperAdmin())modal.querySelector('.popup-actions').insertAdjacentHTML('afterbegin',recordDeleteButton('task',t.id));
  }
  if(act==='event'){openEvent(key);return}
  if(act==='project'){openProject(key);return}

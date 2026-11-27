@@ -138,7 +138,38 @@ function openProject(key){
   projectSelection=project.id;
  });
 }
+
+function recordDeleteButton(kind,key){
+ return isSuperAdmin()?'<button type="button" class="record-delete" data-act="ops-record-delete" data-key="'+e(kind+'|'+key)+'" aria-label="Delete '+e(kind)+'">Delete</button>':'';
+}
+function openRecordDelete(key){
+ if(!isSuperAdmin())return;
+ const split=key.indexOf('|'),kind=key.slice(0,split),id=key.slice(split+1);
+ const record=(kind==='lead'?data.leads:kind==='task'?data.tasks:[]).find(item=>item.id===id);if(!record)return;
+ if(modal.open)modal.close();
+ const linked=kind==='lead'?data.tasks.filter(task=>task.lead===id).length:0;
+ form('Delete '+(kind==='lead'?'expert lead':'task'),'<p><strong>'+e(record.name||record.title)+'</strong></p><p>'+
+  (kind==='lead'?'This removes the lead'+(linked?' and its '+linked+' linked '+(linked===1?'task':'tasks'):'')+' from the ERP. The Google Sheet row stays intact, and automatic imports will skip this lead until it is restored.':
+  'This removes the task from active work. A running timer will stop. The linked lead, if any, stays in the ERP.')+
+  '</p><p>You can restore this from Settings → Deleted items.</p>','Delete '+kind,()=>({type:'record-delete',kind,id}),'compact');
+ modal.querySelector('.popup-actions .primary').classList.add('record-delete-confirm');
+}
+function openDeletedItems(){
+ if(!isSuperAdmin())return;
+ readRecord('Deleted items','<p>Restore tasks and leads removed from the ERP. Google Sheet rows are preserved.</p>'+
+  ((data.deletedRecords||[]).map(item=>'<div class="item"><div><strong>'+e(item.record.name||item.record.title)+'</strong><small>'+e(item.kind+' · '+item.deletedBy+' · '+calendarStamp(item.deletedAt))+'</small></div>'+btn('Restore','ops-record-restore',item.id)+'</div>').join('')||empty('No deleted items.')));
+}
+function confirmRecordRestore(id){
+ if(!isSuperAdmin())return;
+ const item=(data.deletedRecords||[]).find(value=>value.id===id);if(!item)return;
+ if(modal.open)modal.close();
+ form('Restore '+item.kind,'<p>Restore <strong>'+e(item.record.name||item.record.title)+'</strong>'+(item.tasks?.length?' and '+item.tasks.length+' linked tasks':'')+' to the workspace?</p>','Restore',()=>({type:'record-restore',id}),'compact');
+}
+
 function operationsAction(act,key){
+ if(act==='ops-record-delete'){openRecordDelete(key);return}
+ if(act==='ops-deleted-items'){openDeletedItems();return}
+ if(act==='ops-record-restore'){confirmRecordRestore(key);return}
  if(act==='ops-growth-milestone'){
   const project=data.projects.find(p=>(p.milestones||[]).some(m=>p.id+'|'+m.id===key));
   const item=project?.milestones.find(m=>project.id+'|'+m.id===key);
@@ -231,7 +262,7 @@ function updateSyncLabel(state=data){
 function renderIntegrations(){
  ui.innerHTML=title('Settings','Manage access, Google Sheets, and workspace exports.')+
  panel('Google Sheets',`<form id="sheet-link" class="item">${input('Google Sheet link','link',data.sheetLink,'url',true)}<p>Use Name (Expert) and Contact Number (General), or Name and Phone, on the same header row near the top. The server imports Sheet changes and retries queued ERP updates every 5 minutes, even when nobody has the ERP open. Saved lead changes also queue for immediate write-back while using the ERP.</p><button class="primary">${data.sheetLink?'Change connection':'Connect Sheet'}</button> ${data.sheetLink?btn('Disconnect','sheet-disconnect'):''}<p id="sheet-status" role="status"></p></form>`)+
- panel('CSV and backup',`<div class="item"><div class="actions">${btn('Import Sheet CSV','import')}${btn('Export leads CSV','export')}${btn('Download ERP records','ops-backup')}</div></div>`);
+ panel('CSV and backup',`<div class="item"><div class="actions">${btn('Import Sheet CSV','import')}${btn('Export leads CSV','export')}${btn('Download ERP records','ops-backup')}${isSuperAdmin()?btn('Deleted items','ops-deleted-items'):''}</div></div>`);
  updateSyncLabel();
  $('#sheet-link').onsubmit=async event=>{
   event.preventDefault();if(busy)return;
