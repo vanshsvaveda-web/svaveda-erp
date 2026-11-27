@@ -7,9 +7,20 @@ const manifest=JSON.parse(await readFile('web/manifest.webmanifest','utf8'));
 assert.equal(manifest.start_url,'/');assert.equal(manifest.scope,'/');assert.equal(manifest.display,'standalone');assert.equal(manifest.id,'/');
 for(const icon of manifest.icons){
  const response=await worker.fetch(new Request('https://erp.example.invalid'+icon.src),{});
- assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/svg+xml');
- const body=await response.text();assert.match(body,/width="512" height="512"/);assert.match(body,/data:image\/png;base64,/);assert.equal(icon.sizes,'any');assert.equal(body,await readFile('web'+icon.src,'utf8'));
+ assert.equal(response.status,200);
+ const path=new URL(icon.src,'https://erp.example.invalid').pathname;
+ if(icon.type==='image/svg+xml'){
+  assert.equal(response.headers.get('content-type'),'image/svg+xml');
+  const body=await response.text();assert.match(body,/width="512" height="512"/);assert.match(body,/data:image\/png;base64,/);assert.equal(icon.sizes,'any');assert.equal(body,await readFile('web'+path,'utf8'));
+  const embedded=body.match(/base64,([^"]+)/)[1];assert.deepEqual(Buffer.from(embedded,'base64'),await readFile('web/logo.png'));
+ }else{
+  assert.equal(response.headers.get('content-type'),'image/png');
+  const body=Buffer.from(await response.arrayBuffer()),size=Number(icon.sizes.split('x')[0]);
+  assert.equal(body.readUInt32BE(16),size);assert.equal(body.readUInt32BE(20),size);assert.deepEqual(body,await readFile('web'+path));
+ }
 }
+assert.ok(manifest.icons.some(icon=>icon.purpose==='maskable'));
+
 const png=await worker.fetch(new Request('https://erp.example.invalid/logo.png'),{});assert.equal(png.status,200);assert.deepEqual(Buffer.from(await png.arrayBuffer()),await readFile('web/logo.png'));
 
 for(const [path,mime] of [['/manifest.webmanifest','application/manifest+json'],['/sw.js','text/javascript; charset=utf-8'],['/mobile.css','text/css; charset=utf-8'],['/appearance.js','text/javascript; charset=utf-8'],['/offline.html','text/html; charset=utf-8']]){
@@ -30,3 +41,5 @@ assert.equal(await (await intercepted('/',{mode:'navigate'})).text(),'NETWORK');
 offline=true;assert.equal(await (await intercepted('/',{mode:'navigate'})).text(),'OFFLINE');assert.ok(!cacheRecords.has('/'));
 offline=false;assert.equal(await (await intercepted('/app.123456abcdef.js')).text(),'NETWORK');assert.ok(cacheRecords.has('/app.123456abcdef.js'));
 console.log('PASS: manifest and icon sizes; PNG delivery bytes; public asset types and HEAD; sign-in theme and CSP; network-only private APIs; no cached signed-in HTML; offline navigation fallback; static-only asset caching.');
+for(const name of ['sunflower-v1','tree-v1']){const path='/botanicals/'+name+'.webp',response=await worker.fetch(new Request('https://erp.example.invalid'+path),{});assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/webp');assert.deepEqual(Buffer.from(await response.arrayBuffer()),await readFile('web'+path));}
+console.log('PASS: compressed botanical assets retain exact binary bytes and WebP MIME types.');

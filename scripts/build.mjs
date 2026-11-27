@@ -10,6 +10,7 @@ for (const [path, file, mime] of [
   ['/style.css', 'style.css', 'text/css; charset=utf-8'],
   ['/modern.css', 'modern.css', 'text/css; charset=utf-8'],
   ['/mobile.css', 'mobile.css', 'text/css; charset=utf-8'],
+  ...['sunflower-v1','tree-v1'].map(name=>['/botanicals/'+name+'.webp','botanicals/'+name+'.webp','image/webp']),
   ['/premium.js','premium.js','text/javascript; charset=utf-8'],
   ['/dimension.css','dimension.css','text/css; charset=utf-8'],
   ['/fonts.css','fonts.css','text/css; charset=utf-8'],
@@ -19,7 +20,7 @@ for (const [path, file, mime] of [
   ['/sw.js', 'sw.js', 'text/javascript; charset=utf-8'],
   ['/manifest.webmanifest', 'manifest.webmanifest', 'application/manifest+json'],
   ['/offline.html', 'offline.html', 'text/html; charset=utf-8'],
-  ...['app-192','app-512','maskable-512'].map(name=>['/icons/'+name+'.png','icons/'+name+'.png','image/png']),
+  ...['app-192','app-512','maskable-512','favicon-32'].map(name=>['/icons/'+name+'.png','icons/'+name+'.png','image/png']),
   ['/operations.js', 'operations.js', 'text/javascript; charset=utf-8'],
   ['/calendar.js', 'calendar.js', 'text/javascript; charset=utf-8'],
   ['/messages.js', 'messages.js', 'text/javascript; charset=utf-8'],
@@ -32,13 +33,14 @@ for (const [path, file, mime] of [
   ['/logo.png','logo.png','image/png'],
   ['/app.js', 'app.js', 'text/javascript; charset=utf-8'],
 ]) {
-  assets[path] = (mime==='image/png'||mime==='font/woff')?{mime,body:(await readFile('web/'+file)).toString('base64'),encoding:'base64'}:{mime,body:await readFile('web/'+file,'utf8')};
+  assets[path] = (mime==='image/png'||mime==='image/webp'||mime==='font/woff')?{mime,body:(await readFile('web/'+file)).toString('base64'),encoding:'base64'}:{mime,body:await readFile('web/'+file,'utf8')};
 }
 let worker = (await readFile('worker/index.mjs', 'utf8')) + '\n' + (await readFile('worker/extras.mjs','utf8')) + '\n' + (await readFile('worker/messages.mjs', 'utf8')) + '\n' + (await readFile('web/message-links.js', 'utf8')) + '\n' + (await readFile('worker/roles.mjs', 'utf8')) + '\n' + (await readFile('worker/operations.mjs', 'utf8')) + '\n' + (await readFile('worker/sheets.mjs', 'utf8')) + '\n' + (await readFile('web/assignees.js', 'utf8')) + '\n' + (await readFile('web/lead-history.js', 'utf8'));
 if (process.env.VERCEL === '1' || process.env.SVAVEDA_VERCEL_BUILD === '1') {
+  await mkdir('dist/public/botanicals', {recursive:true});
   await mkdir('dist/public/fonts', {recursive:true});
   await mkdir('dist/public/icons', { recursive: true });
-  for (const file of ['premium.js','dimension.css','fonts.css',...['rajdhani-700','rubik-400','rubik-500','rubik-600','rubik-700'].map(name=>'fonts/'+name+'.woff'),'extras.js','logo.svg','logo.png','mobile.css','signin.css','appearance.js','sw.js','manifest.webmanifest','offline.html','icons/app-192.png','icons/app-512.png','icons/maskable-512.png','style.css','modern.css','app.js','calendar.js','messages.js','message-links.js','operations.js','task-metrics.js','assignees.js','lead-history.js']) await copyFile('web/'+file,'dist/public/'+file);
+  for (const file of [...['sunflower-v1','tree-v1'].map(name=>'botanicals/'+name+'.webp'),'premium.js','dimension.css','fonts.css',...['rajdhani-700','rubik-400','rubik-500','rubik-600','rubik-700'].map(name=>'fonts/'+name+'.woff'),'extras.js','logo.svg','logo.png','mobile.css','signin.css','appearance.js','sw.js','manifest.webmanifest','offline.html','icons/app-192.png','icons/app-512.png','icons/maskable-512.png','icons/favicon-32.png','style.css','modern.css','app.js','calendar.js','messages.js','message-links.js','operations.js','task-metrics.js','assignees.js','lead-history.js']) await copyFile('web/'+file,'dist/public/'+file);
   worker = worker.replace(/const ownerHash = '[a-f0-9]*';/, "const ownerHash = process.env.SVAVEDA_OWNER_EMAIL_HASH || '';");
   assets['/'].body = assets['/'].body.replace('<div class="header-actions">', '<div class="header-actions"><form method="post" action="/api/sign-out"><button>Sign out</button></form>');
 }

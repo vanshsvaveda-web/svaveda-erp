@@ -924,7 +924,7 @@ async function refreshAlerts(baseline=false){
   if(previous&&!baseline&&added.length)notify(added.length===1?added[0].label+' · '+added[0].subject:added.length+' new workspace updates');
   if(previous&&!baseline&&added.length&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
    const categories=[...new Set(added.map(item=>item.label))];
-   const notification=new Notification('SvaVeda Workspace',{body:categories.length===1?categories[0]:added.length+' new workspace updates',tag:'svaveda-workspace'});
+   const notification=new Notification('SvaVeda Workspace',{icon:'/logo.png?v=brand-20261127',badge:'/icons/app-192.png?v=brand-20261127',body:categories.length===1?categories[0]:added.length+' new workspace updates',tag:'svaveda-workspace'});
    notification.onclick=()=>{window.focus();if(!modal.open&&!busy)openNotifications();notification.close()};
   }
   localStorage.setItem(key,JSON.stringify([...seen,...added.map(item=>item.id)].slice(-2000)));
