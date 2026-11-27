@@ -13,7 +13,7 @@
   const full=(tasks.length>0||leads.length>0)&&done===tasks.length&&onboarded===leads.length;
   const stage=full?5:done||onboarded?4:review||verified?3:active||contacted?2:tasks.length||leads.length?1:0;
   return {stage,done,review,active,total:tasks.length,experts:leads.length,verified,onboarded,contacted,full,
-   branches:stage?Math.min(6,Math.max(2,Math.ceil(Math.sqrt(tasks.length+leads.length)))):0,
+   branches:stage>=2?6:stage===1?4:0,
    // Sampled botanical clusters. Exact workload counts remain in the caption and task list.
    flowers:full?7:Math.min(6,done+onboarded),buds:Math.min(5,review+verified),
    leaves:stage>=2?12:stage===1?5:2,
@@ -23,7 +23,7 @@
   const tasks=(state.tasks||[]).filter(t=>t.projectId===record.id);
   const ids=new Set(tasks.map(t=>t.lead).filter(Boolean));
   const onboarding=record.id==='expert-onboarding'||record.name?.trim().toLowerCase()==='expert onboarding';
-  const leads=(state.leads||[]).filter(l=>ids.has(l.id)||l.projectId===record.id||onboarding);
+  const leads=(state.leads||[]).filter(l=>ids.has(l.id)||l.projectId===record.id||(onboarding&&!l.projectId));
   return model(tasks,leads);
  }
  function personal(state,name,today){
@@ -42,8 +42,10 @@
   const tips=[[68,126],[224,115],[119,64],[185,60],[62,184],[236,180],[151,34]];
   const stems=['M151 280Q146 210 150 144Q149 77 157 39','M149 207Q104 199 72 164','M150 173Q195 162 223 126','M150 145Q106 131 80 101','M151 116Q183 100 190 64','M148 235Q197 223 225 191','M150 85Q127 74 120 51'];
   const branchCount=kind==='login'?6:m.branches;
-  const core=stems.slice(0,1+branchCount).map((d,i)=>'<path d="'+d+'" fill="none" stroke="url(#'+key+'-wood)" stroke-width="'+(i?Math.max(3,8-i):12)+'" stroke-linecap="round"/>').join('');
-  let leaves=positions.slice(0,kind==='login'?12:m.leaves).map((p,i)=>leaf(...p,i)).join('');
+  const leafPositions=kind!=='login'&&m.stage===0?[[151,215,-110],[153,190,-5]]:positions;
+  const branchPaths=kind!=='login'&&m.stage===0?['M151 280Q145 230 153 188']:stems.slice(0,1+branchCount);
+  const core=branchPaths.map((d,i)=>'<path d="'+d+'" fill="none" stroke="url(#'+key+'-wood)" stroke-width="'+(i?Math.max(3,8-i):12)+'" stroke-linecap="round"/>').join('');
+  let leaves=leafPositions.slice(0,kind==='login'?12:m.leaves).map((p,i)=>leaf(...p,i)).join('');
   let blossoms='';
   if(kind==='login'){
    blossoms=flower(185,60,0)+flower(68,126,1,true)+flower(224,115,2,true);
@@ -85,8 +87,9 @@
   document.addEventListener('visibilitychange',pause);pause();
  }
  function cleanup(){cancelAnimationFrame(frame);frame=0;tiltTarget=null}
+ function sessionStore(){try{return sessionStorage}catch{return null}}
  function welcome(context,hero){
-  if(!context?.authenticated||!consumeWelcome(sessionStorage,true))return;
+  if(!context?.authenticated||!consumeWelcome(sessionStore(),true))return;
   const note=document.createElement('div');note.className='garden-welcome';note.setAttribute('role','status');note.textContent='Welcome to your workspace.';
   note.innerHTML=markup({...model([{status:'In review'}]),flowers:1,buds:0},{kind:'branch',caption:false})+'<span>Welcome to your workspace.</span>';
   document.body.append(note);
@@ -100,8 +103,8 @@
    const main=login.closest('main'),scene=document.querySelector('.login-garden');
    if(scene&&!scene.querySelector('.growth-scene'))scene.insertAdjacentHTML('afterbegin',markup(model([{status:'In progress'}]),{kind:'login',caption:false}));
    tiltTarget=scene?.querySelector('.growth-depth');
-   if(!main.dataset.gardenBound){main.dataset.gardenBound='true';if(main.querySelector('[role="alert"]'))loginPending(sessionStorage,true);
-    main.querySelector('form')?.addEventListener('submit',()=>loginPending(sessionStorage));}
+   if(!main.dataset.gardenBound){main.dataset.gardenBound='true';if(main.querySelector('[role="alert"]'))loginPending(sessionStore(),true);
+    main.querySelector('form')?.addEventListener('submit',()=>loginPending(sessionStore()));}
    return;
   }
   const hero=container.querySelector('.premium-hero');
