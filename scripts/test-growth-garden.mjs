@@ -50,3 +50,20 @@ viewContext.record={...record,milestones:[{id:'m',title:'Review <work>',done:fal
 const panel=vm.runInContext('projectArtwork(record,true)',viewContext);
 assert.match(panel,/ops-growth-milestone/);assert.ok(panel.includes('p|m'));assert.ok(!panel.includes('Review <work>'));
 console.log('PASS: garden stages; review buds and completion flowers; neutral overdue display; project scope; bounded SVG rendering; personal ownership and IST dates; escaping; unique gradients; authenticated one-shot welcome; failed-login clearing; blocked storage; login CSP; script syntax; clickable milestone markup.');
+
+const companyState={projects:[{id:'marketing',name:'Campaign launch'},{id:'ops',name:'Product development'}],tasks:[{id:'ops-task',projectId:'ops',status:'In progress'},{id:'marketing-task',projectId:'marketing',status:'In review'},{id:'sales-task',lead:'expert',department:'Operations',status:'Done'},{id:'team-task',department:'Team',status:'To do'},{id:'content',department:'Content',status:'Done'}],leads:[{id:'expert',status:'Verified'}]};
+const company=g.company(companyState);
+assert.equal(company.total,5);assert.equal(company.done,2);assert.equal(company.review,1);
+assert.equal(company.areas.find(a=>a.name==='Operations').active,1);
+assert.equal(company.areas.find(a=>a.name==='Marketing').total,2);
+assert.equal(company.areas.find(a=>a.name==='Marketing').review,1);
+assert.equal(company.areas.find(a=>a.name==='Sales').total,1);
+assert.equal(company.areas.find(a=>a.name==='Sales').verified,1);
+assert.equal(company.areas.find(a=>a.name==='Team').total,1);
+assert.equal(company.areas.reduce((n,a)=>n+a.total,0),company.total);
+const tree=g.companyMarkup(companyState);
+assert.equal((tree.match(/class="company-branch"/g)||[]).length,4);
+assert.match(tree,/data-act="ops-project"/);assert.match(tree,/type="button"/);assert.match(tree,/aria-label="Open project garden/);
+assert.match(tree,/2 of 5 tasks complete/);assert.equal(g.company({}).total,0);assert.ok(!g.companyMarkup({}).includes('NaN'));
+assert.ok(g.companyMarkup({tasks:Array.from({length:10000},()=>({status:'Done',department:'Operations'}))}).length<30000);
+console.log('PASS: company totals, four branches, department/project classification, lead work routing, review/completion counts, accessible garden action and bounded rendering.');

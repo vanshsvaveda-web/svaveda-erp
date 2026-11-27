@@ -32,6 +32,29 @@
     new Date(Number(t.completedAt)+330*60000).toISOString().slice(0,10)===today:t.due===today));
   return model(tasks);
  }
+
+ function areaFor(record={}){
+  const value=String(record.department||record.name||'').toLowerCase();
+  return /expert|acquisition|lead|sales/.test(value)?'Sales':/market|content|social|campaign|launch/.test(value)?'Marketing':/team|people|human resources|^hr$/.test(value)?'Team':'Operations';
+ }
+ function company(state={}){
+  const projects=new Map((state.projects||[]).map(p=>[p.id,p])),tasks=state.tasks||[],leads=state.leads||[];
+  return {...model(tasks,leads),areas:['Operations','Marketing','Sales','Team'].map(name=>({name,...model(tasks.filter(t=>(t.lead?'Sales':areaFor(t.department?t:projects.get(t.projectId)||{}))===name),name==='Sales'?leads:[])}))};
+ }
+ function companyMarkup(state){
+  const m=company(state),key='company-garden-'+(++serial);
+  const leaf=(x,y,r)=>'<g transform="translate('+x+' '+y+') rotate('+r+')"><path d="M0 0C-7-25 14-42 39-39C42-14 21 3 0 0Z" fill="url(#'+key+'-leaf)"/><path d="M0 0Q23-1 39-39Q21-9 0 0" fill="var(--garden-leaf-dark)" opacity=".28"/><path d="M2-2 32-32" stroke="var(--garden-vein)" stroke-width="1" opacity=".55"/></g>';
+  const flower=(x,y,bud)=>'<g transform="translate('+x+' '+y+')"><g class="'+(bud?'growth-bud':'growth-flower')+'">'+(bud?'<path d="M-6 2Q-13-13 0-20Q13-13 6 2Z" fill="url(#'+key+'-gold)"/><path d="M-7 1 0-4 7 1 0 7Z" fill="var(--garden-leaf-dark)"/>':Array.from({length:7},(_,i)=>'<ellipse cx="0" cy="-8" rx="5" ry="9" fill="url(#'+key+'-gold)" transform="rotate('+i*360/7+')"/>').join('')+'<circle r="5" fill="#73532d"/><circle cx="-1" cy="-1" r="2" fill="#bc9251"/>')+'</g></g>';
+  const branches=[{x:85,y:166,p:'M230 245Q178 245 131 210Q102 193 85 166',r:-20},{x:154,y:70,p:'M231 197Q174 168 161 120Q151 94 154 70',r:-12},{x:304,y:58,p:'M232 172Q275 152 292 108Q302 81 304 58',r:12},{x:377,y:160,p:'M231 233Q288 225 333 193Q360 178 377 160',r:20}];
+  const crown=branches.map((b,i)=>{
+   const a=m.areas[i],flowers=Math.min(2,a.done+a.onboarded),buds=Math.min(2,a.review+a.verified),points=[[b.x-22,b.y-19],[b.x+31,b.y-20],[b.x+1,b.y-39],[b.x-44,b.y+29]];
+   const foliage=leaf(b.x,b.y+10,b.r-95)+leaf(b.x+5,b.y+6,b.r+5)+(a.total||a.experts?leaf(b.x-23,b.y+38,b.r-130)+leaf(b.x+24,b.y+35,b.r+20):'')+(a.active||a.contacted||a.done||a.review?leaf(b.x-36,b.y+3,b.r-112)+leaf(b.x+34,b.y+4,b.r):'')+(a.active>1||a.done>1?leaf(b.x-12,b.y-23,b.r-100)+leaf(b.x+12,b.y-27,b.r):'');
+   return '<g class="company-branch" data-area="'+a.name+'"><title>'+escape(a.name+': '+label(a))+'</title><path d="'+b.p+'" stroke="url(#'+key+'-wood)" stroke-width="9" stroke-linecap="round"/><path d="'+b.p+'" stroke="var(--garden-vein)" stroke-width="1.3" opacity=".16" stroke-linecap="round"/>'+foliage+points.slice(0,flowers).map(p=>flower(...p,false)).join('')+points.slice(flowers,flowers+buds).map(p=>flower(...p,true)).join('')+'</g>';
+  }).join('');
+  const art='<svg class="growth-sculpture company-tree" viewBox="0 0 460 320" fill="none" aria-hidden="true"><defs><linearGradient id="'+key+'-wood" x1="208" y1="50" x2="245" y2="296" gradientUnits="userSpaceOnUse"><stop stop-color="var(--garden-wood-light)"/><stop offset=".5" stop-color="var(--garden-wood)"/><stop offset="1" stop-color="var(--garden-wood-dark)"/></linearGradient><linearGradient id="'+key+'-leaf" x1="0" y1="0" x2="1" y2="1"><stop stop-color="var(--garden-leaf-light)"/><stop offset=".45" stop-color="var(--garden-leaf)"/><stop offset="1" stop-color="var(--garden-leaf-dark)"/></linearGradient><radialGradient id="'+key+'-gold" cx=".3" cy=".2" r=".85"><stop stop-color="#fff0a3"/><stop offset=".55" stop-color="#f3c64a"/><stop offset="1" stop-color="#d59828"/></radialGradient></defs><ellipse cx="231" cy="302" rx="112" ry="11" fill="var(--garden-shadow)" opacity=".09"/><ellipse cx="231" cy="302" rx="69" ry="5" fill="var(--garden-shadow)" opacity=".07"/><g class="growth-canopy"><path d="M230 293Q234 247 230 199Q225 134 234 94" stroke="url(#'+key+'-wood)" stroke-width="15" stroke-linecap="round"/><path d="M227 290Q231 246 227 199" stroke="var(--garden-vein)" stroke-width="2" opacity=".18" stroke-linecap="round"/>'+crown+'<path d="M230 291Q214 301 196 301M233 291Q247 299 266 302" stroke="var(--garden-wood-dark)" stroke-width="5" stroke-linecap="round"/></g></svg>';
+  return '<button type="button" class="company-growth" data-act="ops-project" aria-label="'+escape('Open project garden. Company growth: '+label(m)+'. Branches: '+m.areas.map(a=>a.name+', '+a.total+' tasks').join('; '))+'" title="Open project garden"><span class="company-growth-art" aria-hidden="true"><span class="company-leaf-haze"></span><span class="growth-depth">'+art+'</span></span><span class="company-area-legend" aria-hidden="true">'+m.areas.map(a=>'<span data-area="'+a.name+'"><i></i>'+a.name+'</span>').join('')+'</span><span class="company-growth-caption">'+m.done+' of '+m.total+' tasks complete'+(m.review?' · '+m.review+' in review':'')+'</span></button>';
+ }
+
  const label=m=>m.total+' tasks · '+m.done+' complete · '+m.review+' in review'+(m.experts?' · '+m.onboarded+' of '+m.experts+' experts onboarded · '+m.verified+' verified':'');
  let serial=0;
  function sculpture(m,kind='tree'){
@@ -74,7 +97,7 @@
   if(!authenticated)return false;
   try{const stamp=Number(storage.getItem('svaveda-garden-entry'));storage.removeItem('svaveda-garden-entry');return stamp>0&&Date.now()-stamp>=0&&Date.now()-stamp<120000}catch{return false}
  }
- scope.SvaVedaGrowth={model,project,personal,markup,label,loginPending,consumeWelcome};
+ scope.SvaVedaGrowth={model,project,personal,company,companyMarkup,markup,label,loginPending,consumeWelcome};
  if(typeof document==='undefined')return;
  const root=document.documentElement,motion=matchMedia('(prefers-reduced-motion: reduce)'),fine=matchMedia('(hover: hover) and (pointer: fine)');
  const lastProgress=new Map();let tiltTarget=null,frame=0;
@@ -112,7 +135,7 @@
    const personalView=hero.classList.contains('personal-heading');
    if(personalView){hero.querySelector('.hero-growth')?.remove();const art=document.createElement('div');art.className='hero-growth';
     art.innerHTML=markup(personal(context.data,context.name,context.today),{kind:'branch',caption:false});art.setAttribute('aria-hidden','true');hero.append(art);tiltTarget=art.querySelector('.growth-depth');}
-   else{hero.classList.add('garden-overview-hero');}
+   else{hero.classList.add('garden-overview-hero');hero.querySelector('.company-growth')?.remove();hero.insertAdjacentHTML('beforeend',companyMarkup(context.data));tiltTarget=hero.querySelector('.company-growth .growth-depth');}
   }
   const ring=container.querySelector('[data-daily-progress]');
   if(ring){const key=ring.dataset.progressKey,value=Number(ring.dataset.done),previous=lastProgress.get(key);lastProgress.set(key,value);
