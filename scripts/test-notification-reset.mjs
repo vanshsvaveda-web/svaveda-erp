@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import {readFile} from 'node:fs/promises';
+const ctx=vm.createContext({});
+vm.runInContext(await readFile('web/assignees.js','utf8'),ctx);
+vm.runInContext('globalThis.filter=notificationsAfterReset',ctx);
+const entries=[{id:'old-completion',at:999},{id:'old-message',at:1000},{id:'task-due:old:2026-11-27',at:0},{id:'new-assignment',at:1001},{id:'task-due:new:2026-11-27',at:0},{id:'event:next-day:2026-11-28',at:0}];
+const reset={at:1000,ids:['task-due:old:2026-11-27']};
+assert.deepEqual(Array.from(ctx.filter(entries,reset),x=>x.id),['new-assignment','task-due:new:2026-11-27','event:next-day:2026-11-28']);
+assert.equal(ctx.filter(entries,undefined).length,entries.length);
+assert.equal(ctx.filter(entries,{at:'invalid'}).length,entries.length);
+assert.equal(entries.length,6,'clearing alerts does not delete work or message history');
+// Test canonical reset persistence and per-role delivery through the real API.
+process.env.SVAVEDA_OWNER_EMAIL_HASH=(await import('node:crypto')).createHash('sha256').update('admin@example.invalid').digest('hex');
+const {default:worker}=await import('../dist/server/index.js');
+let revision=1,state={orgKey:'svaveda',people:[{name:'Vansh'},{name:'Employee'}],seats:[{name:'Employee',role:'Employee',email:'employee@example.invalid'}],tasks:[],leads:[],projects:[],events:[],messages:[],reviews:[],requests:[],attendance:{},notificationReset:reset};
+const DB={prepare(){return {bind(...args){return {first:async()=>({workspace_id:'admin',revision,payload:JSON.stringify(state)}),run:async()=>{if(args[2]!==revision)return {meta:{changes:0}};state=JSON.parse(args[0]);revision++;return {meta:{changes:1}}}}}}}};
+const call=async(email,method='GET',body)=>worker.fetch(new Request('https://erp.example.invalid/api/workspace',{method,headers:{Origin:'https://erp.example.invalid','Content-Type':'application/json','oai-authenticated-user-id':email,'oai-authenticated-user-email':email},...(body?{body:JSON.stringify(body)}:{})}),{DB});
+const employee=await(await call('employee@example.invalid')).json();assert.deepEqual(employee.data.notificationReset,reset,'the reset is shared with employee sessions');
+const admin=await(await call('admin@example.invalid')).json();admin.data.notificationReset={at:9999999999999,ids:[]};
+const response=await call('admin@example.invalid','PUT',{revision:admin.revision,data:admin.data});assert.equal(response.status,200);assert.deepEqual(state.notificationReset,reset,'client saves cannot forge or undo the canonical reset');
+console.log('PASS: old notification suppression, clearing untimed due alerts, new assignment/message and future-day delivery, unchanged history, per-role delivery and server-owned reset persistence.');

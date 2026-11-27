@@ -797,7 +797,7 @@ function activityAlerts(state){
    if(mentioned||mine)add('discussion:'+kind+':'+record.id+':'+comment.id,mentioned?'Mentioned you':'Work discussion updated',[record.title||record.name,comment.actor,comment.text.slice(0,100)].join(' · '),comment.at,'work-discussion',kind+':'+record.id);
   }
  }
- return [...entries,...messageAlerts].sort((a,b)=>b.at-a.at);
+ return notificationsAfterReset([...entries,...messageAlerts],state.notificationReset).sort((a,b)=>b.at-a.at);
 }
 const notificationReadKey=()=> 'svaveda-notifications-v1-'+currentName;
 function readNotifications(){

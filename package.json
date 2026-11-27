@@ -6,7 +6,7 @@
     "node": "24.x"
   },
   "scripts": {
-    "build": "node scripts/build.mjs && node scripts/test-growth-garden.mjs && node scripts/test-auth-session.mjs && node scripts/test-message-directory.mjs && node scripts/test-collaboration.mjs && node scripts/test-sheet-sync.mjs && node scripts/test-mobile-app.mjs && node scripts/test-personal-workflows.mjs && node scripts/test-messages.mjs && node scripts/test-workspace-delivery.mjs && node scripts/test-row-delete.mjs"
+    "build": "node scripts/build.mjs && node scripts/test-growth-garden.mjs && node scripts/test-auth-session.mjs && node scripts/test-message-directory.mjs && node scripts/test-collaboration.mjs && node scripts/test-sheet-sync.mjs && node scripts/test-mobile-app.mjs && node scripts/test-personal-workflows.mjs && node scripts/test-messages.mjs && node scripts/test-workspace-delivery.mjs && node scripts/test-row-delete.mjs && node scripts/test-notification-reset.mjs"
   },
   "dependencies": {
     "pg": "^8.16.3"

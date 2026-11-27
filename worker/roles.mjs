@@ -57,7 +57,7 @@ function baseScopedState(access) {
   }
   const tasks=visible.tasks.filter(item=>assignedTo(item,access.name));
   const assignedProjects=new Set(tasks.map(item=>item.projectId).filter(Boolean));
-  return {people:[{name:access.name,role:access.role}],leads:visible.leads.filter(item=>assignedTo(item,access.name)),tasks,
+  return {notificationReset:visible.notificationReset,people:[{name:access.name,role:access.role}],leads:visible.leads.filter(item=>assignedTo(item,access.name)),tasks,
     projects:visible.projects.filter(item=>item.owner===access.name||item.members?.includes(access.name)||assignedProjects.has(item.id)),events:visible.events.filter(item=>!item.owner||item.owner===access.name),
     attendance:visible.attendance,messages:[],reviews:visible.reviews.filter(item=>item.owner===access.name),requests:(visible.requests||[]).filter(item=>item.user===access.user)};
 }

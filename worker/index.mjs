@@ -66,7 +66,7 @@ async function workspace(request, env) {
     try {
       const seats = data.seats && JSON.stringify(data.seats)!==JSON.stringify(access.seats)
         ? validateSeats(data.seats, access.email, access.seats) : access.seats;
-      next = {...data,seats,orgKey:'svaveda',attendanceByUser:access.state?.attendanceByUser || {},requests:access.state?.requests||[],activity:access.state?.activity||[]};
+      next = {...data,seats,notificationReset:access.state?.notificationReset,orgKey:'svaveda',attendanceByUser:access.state?.attendanceByUser || {},requests:access.state?.requests||[],activity:access.state?.activity||[]};
     } catch (error) {
       return json({ error:error.message }, 400);
     }

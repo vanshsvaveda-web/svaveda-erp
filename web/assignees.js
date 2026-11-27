@@ -60,3 +60,10 @@ function dailyWorkProgress(state,name,today){
 function leadTaskSuppressed(lead){
  return Boolean(lead?.suppressedTask&&lead.suppressedTask.action===(lead.action||'')&&lead.suppressedTask.due===(lead.due||''));
 }
+
+function notificationsAfterReset(entries,reset){
+ const at=Number(reset?.at);
+ if(!Number.isFinite(at)||at<=0)return entries;
+ const dismissed=new Set(Array.isArray(reset.ids)?reset.ids:[]);
+ return entries.filter(item=>!dismissed.has(item.id)&&(!(Number(item.at)>0)||Number(item.at)>at));
+}
