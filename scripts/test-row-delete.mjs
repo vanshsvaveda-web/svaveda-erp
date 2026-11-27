@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {webcrypto,createHash} from 'node:crypto';
-const context=vm.createContext({crypto:webcrypto,TextEncoder,Response,AbortSignal,URL,Date,console,structuredClone});
+const context=vm.createContext({crypto:webcrypto,TextEncoder,TextDecoder,Response,AbortSignal,URL,URLSearchParams,Date,console,structuredClone});
 for(const file of ['web/assignees.js','worker/operations.mjs','worker/sheets.mjs'])vm.runInContext(await readFile(file,'utf8'),context);
 vm.runInContext("globalThis.free=firstFreeLeadRow;globalThis.merge=mergeBackgroundSheet;globalThis.op=operate;globalThis.suppressed=leadTaskSuppressed;globalThis.sync=syncSheetLead;globalThis.json=(value,status=200)=>Response.json(value,{status});sheetToken=async()=> 'synthetic-token';",context);
 const rows=[['Name','Sq','Phone','Notes'],['First',1,'9999999999'],['',2,'',''],['Later',3,'8888888888']];
@@ -62,19 +62,20 @@ async function writeCase(grid,lead){
  const work={leads:[lead],sheetLink:'https://docs.google.com/spreadsheets/d/abcdefghijklmnop/edit',sheetQueue:{[lead.id]:{fields:['name','phone','note'],attempts:0,nextAt:0}}};
  const DB={prepare(){return {bind(payload){saved=JSON.parse(payload);return {run:async()=>({meta:{changes:1}})}}}}};
  const result=await context.sync({state:work,workspace:'fake',revision:1},{DB,GOOGLE_SHEETS_SERVICE_ACCOUNT:'fake',SHEET_WRITES_SERIALIZED:true},lead.id);
- return {status:result.status,changes,saved,g};
+ return {status:result.status,body:await result.json(),changes,saved,g};
 }
 const grid=[['Sq','Name','Phone','Notes','Unused'],[1,'Existing','8888888888'],[2], [3,'Later','7777777777']];
 const inserted=await writeCase(grid,{id:'new',name:'New expert',phone:'9999999999',note:'New note'});
-assert.equal(inserted.status,200);assert.ok(inserted.changes[0].requests.every(r=>r.updateCells.start.rowIndex===2));
+assert.equal(inserted.status,200,JSON.stringify(inserted.body));assert.ok(inserted.changes[0].requests.every(r=>r.updateCells.start.rowIndex===2));
 assert.equal(inserted.g[2][0],2,'existing serial number is preserved');assert.equal(inserted.g[2][1],'New expert');
 assert.equal(inserted.g[3][1],'Later','a later populated record is untouched');
 const full=await writeCase(grid.filter((_,i)=>i!==2),{id:'new',name:'New expert',phone:'9999999999'});
-assert.equal(full.status,200);assert.ok(full.changes[0].requests[0].appendCells,'only append when no safe blank row remains');
+assert.equal(full.status,200,JSON.stringify(full.body));assert.ok(full.changes[0].requests[0].appendCells,'only append when no safe blank row remains');
 // Run the production workspace handler with fixture-only DB storage.
 process.env.SVAVEDA_OWNER_EMAIL_HASH=createHash('sha256').update('admin@example.invalid').digest('hex');
 const {default:worker}=await import('../dist/server/index.js');
 let current={...fresh(),orgKey:'svaveda',events:[],messages:[],reviews:[],requests:[],attendance:{},attendanceByUser:{},seats:[{name:'Founder',role:'Founder',email:'founder@example.invalid'},{name:'Employee',role:'Employee',email:'employee@example.invalid'}]},revision=1;
+current.tasks[0].id='11111111-1111-4111-8111-111111111111';
 const DB={prepare(){return {bind(...args){return {first:async()=>({workspace_id:'admin',revision,payload:JSON.stringify(current)}),run:async()=>{if(args[2]!==revision)return {meta:{changes:0}};current=JSON.parse(args[0]);revision++;return {meta:{changes:1}}}}}}}};
 const call=async(email,method='GET',body)=>worker.fetch(new Request('https://erp.example.invalid/api/workspace',{method,headers:{Origin:'https://erp.example.invalid','Content-Type':'application/json','oai-authenticated-user-id':email,'oai-authenticated-user-email':email},...(body?{body:JSON.stringify(body)}:{})}),{DB});
 let visible=await(await call('admin@example.invalid')).json();
@@ -82,6 +83,15 @@ let result=await call('admin@example.invalid','PUT',{data:visible.data,revision:
 assert.equal(result.status,200);assert.equal(current.leads.length,0);assert.equal(current.tasks.length,1);assert.equal(Object.keys(current.sheetQueue).length,0);
 visible=await(await call('founder@example.invalid')).json();assert.equal(visible.data.deletedRecords,undefined,'deleted snapshots are not exposed to founders');
 result=await call('founder@example.invalid','PUT',{data:visible.data,revision:visible.revision,command:{type:'record-restore',id:current.deletedRecords[0].id}});assert.equal(result.status,400);
+visible=await(await call('founder@example.invalid')).json();
+visible.data.deletedRecords=[];
+visible.data.tasks.push({...current.deletedRecords[0].tasks[0]});
+result=await call('founder@example.invalid','PUT',{data:visible.data,revision:visible.revision});assert.equal(result.status,400,'normal saves cannot recreate a deleted linked task');
+visible=await(await call('founder@example.invalid')).json();
+visible.data.leads.push({...current.deletedRecords[0].record,phone:'6666666666'});
+result=await call('founder@example.invalid','PUT',{data:visible.data,revision:visible.revision});assert.equal(result.status,400,'changing the phone cannot bypass a deleted lead identifier');
+visible=await(await call('employee@example.invalid')).json();
+result=await call('employee@example.invalid','PUT',{data:visible.data,revision:visible.revision,command:{type:'task-create',id:current.deletedRecords[0].tasks[0].id,title:'Recreated task'}});assert.equal(result.status,400,'personal task creation cannot restore a deleted identifier');
 visible=await(await call('admin@example.invalid')).json();
 result=await call('admin@example.invalid','PUT',{data:visible.data,revision:visible.revision,command:{type:'record-restore',id:current.deletedRecords[0].id}});
 assert.equal(result.status,200);assert.equal(current.leads.length,1);assert.equal(current.tasks.length,2);assert.equal(Object.keys(current.sheetQueue).length,0,'restore itself does not write to Google Sheets');

@@ -75,9 +75,11 @@ async function workspace(request, env) {
     next.deletedRecords=protectedDeletedRecords;
     if([...priorLeads.keys()].some(id=>!next.leads.some(lead=>lead.id===id))||[...priorTasks.keys()].some(id=>!next.tasks.some(task=>task.id===id)))
       return json({error:'Use the Super Admin Delete action to remove tasks or leads.'},403);
-    if(next.leads.some(lead=>!priorLeads.has(lead.id)&&deletedSheetLead(next,sheetPhone(lead.phone))))
+    if(next.leads.some(lead=>!priorLeads.has(lead.id)&&((next.deletedRecords||[]).some(item=>item.kind==='lead'&&item.record.id===lead.id)||deletedSheetLead(next,sheetPhone(lead.phone)))))
       return json({error:'This lead is in Deleted items. Ask the Super Admin to restore it.'},400);
   }
+  if(next.tasks.some(task=>(next.deletedRecords||[]).some(item=>item.kind==='task'?item.record.id===task.id:(item.tasks||[]).some(deleted=>deleted.id===task.id))))
+    return json({error:'This task is in Deleted items. Ask the Super Admin to restore it.'},400);
   if (!command && access.role !== 'Employee' && access.state) {
     if (access.role === 'Super Admin' && JSON.stringify(next.seats)!==JSON.stringify(access.seats)) audit(next,access,'Updated role seats','Roles & Access');
     for (const lead of next.leads) {
