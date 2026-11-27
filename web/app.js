@@ -245,6 +245,7 @@ function renderWorkspace(){
   btn('Check out','attendance','out'):btn('Check in','attendance','in',true);
  $('#subnav').hidden=true;
  $('#crumb').textContent=module.name===page?page:module.name+' / '+page;
+ $('#crumb').dataset.page=page;
  const open=data.tasks.filter(t=>t.status!=='Done'), unassigned=data.leads.filter(l=>!l.owner), due=data.leads.filter(l=>l.due&&l.due<=day()&&!['Do not contact','Not interested','Onboarded','Invalid number'].includes(l.status));
  if(page==='My To-dos'){renderMyTodos();return}
  if(page==='Calendar'){ui.innerHTML='';calendar();return}
