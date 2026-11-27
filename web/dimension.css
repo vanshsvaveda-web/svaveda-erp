@@ -156,3 +156,91 @@ progress{appearance:none;-webkit-appearance:none;border:0;background:var(--surfa
 :root[data-botanical-paused] :is(.sunflower-blossom,.ambient-tree){animation-play-state:paused!important}
 @media(max-width:850px){.signature-sunflower{width:135px;height:135px;right:-7px;top:4px}.sunflower-blossom{width:114px;height:114px;margin:-57px;animation-duration:15s}.ambient-tree-main{right:-170px;bottom:15%;width:470px;height:410px;opacity:.08!important;filter:blur(8px)!important}.ambient-tree-far{display:none}body:has(.login-brand)>main>.signature-sunflower{top:-108px;right:-20px;width:200px;height:155px}body:has(.login-brand) .sunflower-blossom{width:150px;height:150px;margin:-75px}}
 @media(prefers-reduced-motion:reduce){.sunflower-blossom,.ambient-tree{animation:none!important}.flower-parallax{transform:none!important;transition:none!important}}
+
+/* Workspace garden: sculptural branches carry the work, rather than floating decoration. */
+:root{--garden-leaf-light:#cbdca6;--garden-leaf:#83a16d;--garden-leaf-dark:#45654a;--garden-vein:#e6edd5;--garden-wood-light:#c2ad85;--garden-wood:#927c5f;--garden-wood-dark:#66533e;--garden-shadow:#5b4932}
+:root[data-theme=dark]{--garden-leaf-light:#c6dac0;--garden-leaf:#829f86;--garden-leaf-dark:#425f4d;--garden-vein:#deebe4;--garden-wood-light:#bdc9c1;--garden-wood:#80948a;--garden-wood-dark:#4d6559;--garden-shadow:#020b06}
+.growth-scene{position:relative;margin:0;min-width:0;perspective:900px;isolation:isolate}
+.growth-depth{width:100%;height:100%;transform-style:preserve-3d;transform:rotateX(var(--garden-rx,0deg)) rotateY(var(--garden-ry,0deg));transition:transform .7s var(--ease)}
+.growth-sculpture{display:block;width:100%;height:100%;overflow:visible;filter:drop-shadow(6px 10px 7px #17251a16)}
+.growth-canopy{transform-origin:150px 285px;animation:garden-breathe 13s ease-in-out infinite}
+.growth-scene[data-growth-stage="0"] .growth-canopy{transform:translate(52px,100px) scale(.65);animation:none}
+.growth-scene figcaption{display:grid;gap:5px;text-align:center;padding:8px 16px 18px;font-size:12px;color:var(--muted);line-height:1.6}
+.growth-scene figcaption strong{font-family:'Rajdhani',sans-serif;font-size:24px;color:var(--ink);line-height:1.1}
+.growth-scene figcaption span{max-width:320px;margin:auto}
+@keyframes garden-breathe{0%,100%{transform:rotate(-1deg) translateY(0)}50%{transform:rotate(1deg) translateY(-3px)}}
+.garden-dew{transform-origin:219px 164px;animation:dew-swing 9s ease-in-out infinite}
+@keyframes dew-swing{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
+.botanical-background{z-index:-1;pointer-events:none}
+.garden-shadow-branch{position:absolute;right:-160px;bottom:-140px;width:min(750px,80vw);height:760px;opacity:.055;filter:blur(10px);transform:rotate(-22deg);pointer-events:none}
+.garden-shadow-branch .growth-sculpture{filter:none}
+.ambient-leaf{opacity:.085!important;filter:blur(15px)!important;animation-duration:40s}
+.ambient-leaf-2{width:250px;height:145px;right:25%;opacity:.045!important}
+.hero-growth{position:absolute;right:34px;top:-2px;width:235px;height:220px;pointer-events:none}
+.hero-growth .growth-branch-scene{height:100%;transform:rotate(12deg)}
+.hero-growth .growth-depth{height:100%}
+.garden-overview-hero{min-height:174px}
+.garden-overview-hero .hero-copy{max-width:100%}
+.project-artwork.project-garden{height:150px;position:relative;background:radial-gradient(ellipse at 50% 85%,color-mix(in srgb,var(--garden-leaf) 9%,transparent),transparent 70%),var(--surface-soft)!important;overflow:hidden}
+.project-garden>.growth-scene{position:absolute;inset:0}
+.project-garden>.growth-scene>.growth-depth{height:150px;width:165px;margin:0 auto}
+.project-garden .project-artwork-label{top:16px;left:18px;z-index:2;font-size:10px;font-weight:500;letter-spacing:.08em;text-transform:uppercase}
+.project-artwork.project-garden svg{position:static;width:100%;height:100%;right:auto;top:auto;transform:none}
+.project-artwork.project-garden-detail{height:auto;min-height:350px;overflow:visible;border:1px solid var(--line);border-radius:16px;margin:0 0 18px}
+.project-garden-detail>.growth-scene{position:relative;inset:auto}
+.project-garden-detail>.growth-scene>.growth-depth{height:280px;width:270px}
+.project-garden-detail .growth-scene figcaption{padding-top:0}
+.growth-milestone-nodes{position:absolute;inset:0 0 auto;height:280px;width:270px;left:50%;translate:-50% 0;pointer-events:none}
+:root[data-theme] .growth-node{position:absolute;width:36px;height:36px;min-height:36px;padding:0;border-radius:50%;display:grid;place-items:center;background:var(--surface-raised)!important;color:var(--accent)!important;border:1px solid var(--line);box-shadow:var(--shadow);font-size:12px;pointer-events:auto}
+:root[data-theme] .growth-node.is-complete{background:var(--accent-soft)!important}
+.growth-node-0{left:35px;top:94px}.growth-node-1{right:29px;top:88px}.growth-node-2{left:80px;top:33px}.growth-node-3{right:65px;top:28px}.growth-node-4{left:28px;top:153px}.growth-node-5{right:20px;top:149px}
+.growth-milestone-list{border-top:1px solid var(--line);padding:10px;display:grid;gap:3px}
+:root[data-theme] .growth-milestone-list button{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:8px;align-items:center;text-align:left;font-size:12px;border:0;background:transparent;min-height:44px}
+.growth-milestone-list small{font-size:10px;text-align:right}
+.milestone-index{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);font-size:11px}
+.project-growth-workspace{display:grid;grid-template-columns:minmax(270px,440px) minmax(180px,1fr);gap:20px;align-items:center;margin-bottom:24px}
+.project-growth-workspace .project-garden-detail{margin:0}
+.project-growth-workspace .project-progress{margin:0;display:grid;gap:14px;padding:24px}
+.project-growth-workspace .project-progress progress{width:100%}
+:root[data-theme] body.garden-login-page{padding:32px;overflow-x:hidden}
+:root[data-theme] body.garden-login-page>main.garden-login-shell{width:min(1000px,100%);padding:0;display:grid;grid-template-columns:1.1fr 1fr;border-radius:24px;overflow:hidden;position:relative;isolation:isolate;background:var(--glass)!important;backdrop-filter:blur(18px);box-shadow:0 30px 100px #1d281512}
+.login-garden{position:relative;min-width:0;min-height:590px;overflow:hidden;background:radial-gradient(ellipse at 35% 35%,color-mix(in srgb,var(--garden-leaf) 15%,transparent),transparent 70%),var(--surface-soft)}
+.login-garden>.growth-scene{position:absolute;width:360px;height:390px;right:-8px;bottom:50px}
+.login-garden .growth-depth{transform:rotateX(var(--garden-rx,0deg)) rotateY(var(--garden-ry,0deg)) rotateZ(-15deg)}
+.login-garden .growth-sculpture{filter:drop-shadow(12px 22px 12px #223e191f)}
+.garden-intro{position:relative;z-index:1;padding:40px 38px;pointer-events:none}
+.garden-eyebrow{display:block;color:var(--muted);font-size:10px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;margin-bottom:20px}
+:root[data-theme] .garden-intro h2{font-size:46px!important;line-height:1.03;max-width:290px;margin:0}
+.garden-intro p{font-size:13px;line-height:1.8;margin-top:14px}
+.garden-scene-caption{position:absolute;bottom:26px;left:38px;color:var(--muted);font-size:11px}
+.garden-login-card{position:relative;min-width:0;padding:36px 38px;align-self:center}
+.garden-login-card .login-brand{margin-bottom:20px}
+.garden-login-card .login-brand .brand-logo{width:44px;height:44px}
+.garden-login-card .login-brand h1{font-size:30px}
+.garden-login-card .login-brand small{font-size:11px}
+.garden-login-card .login-controls{margin-bottom:28px;justify-content:flex-start;gap:8px}
+.garden-login-card .login-controls button{min-height:34px;padding:7px 10px;font-size:11px}
+:root[data-theme] .login-heading h2{font-size:28px!important;line-height:1.12;margin:0}
+.login-heading p{font-size:12px;line-height:1.6;margin:9px 0 20px}
+.garden-login-card label{font-size:12px;font-weight:500;gap:7px;margin:16px 0}
+.garden-login-card input{min-height:44px;font-size:16px!important;width:100%}
+.garden-login-card .login-submit{min-height:44px;font-size:13px;margin-top:5px;border-radius:9px}
+.login-footer{font-size:10px!important;line-height:1.6;margin:22px 0 0}
+.garden-login-card [role=alert]{font-size:12px;padding:12px;background:var(--accent-soft);border-radius:9px}
+.garden-welcome{position:fixed;bottom:28px;left:50%;translate:-50% 0;z-index:1000;display:flex;align-items:center;gap:8px;padding:7px 18px 7px 5px;background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-raised);font-size:12px;color:var(--ink);max-width:calc(100vw - 32px);pointer-events:none;animation:garden-entry 1.8s ease both}
+.garden-welcome .growth-scene{width:66px;height:66px;flex-shrink:0}
+.garden-welcome .growth-flower{transform-box:fill-box;transform-origin:center;animation:bud-open 1.1s var(--ease) both}
+@keyframes bud-open{0%{transform:scale(.15,.55)}65%{transform:scale(1.12)}100%{transform:scale(1)}}
+@keyframes garden-entry{0%{opacity:0;transform:translateY(12px)}15%,80%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-4px)}}
+:root[data-botanical-paused] :is(.growth-canopy,.garden-dew){animation-play-state:paused!important}
+@media(max-width:850px){.hero-growth{right:0;top:10px;width:140px;height:155px}.personal-heading .hero-copy{max-width:calc(100% - 110px)}.project-growth-workspace{grid-template-columns:1fr}.garden-shadow-branch{right:-180px;opacity:.035;width:500px;height:560px}.growth-node{min-width:44px!important;min-height:44px!important}}
+@media(max-width:760px){:root[data-theme] body.garden-login-page{padding:16px;align-items:center}:root[data-theme] body.garden-login-page>main.garden-login-shell{display:flex;flex-direction:column;width:min(430px,100%);border-radius:20px}.login-garden{min-height:190px;height:190px;width:100%}.login-garden>.growth-scene{width:180px;height:205px;right:-5px;bottom:-13px}.garden-intro{padding:25px 24px}.garden-eyebrow{font-size:8px;margin-bottom:12px;letter-spacing:.1em}:root[data-theme] .garden-intro h2{font-size:31px!important;max-width:200px}.garden-intro p{font-size:10px;max-width:180px;line-height:1.6;margin-top:10px}.garden-scene-caption{display:none}.garden-login-card{padding:24px;width:100%}.garden-login-card .login-brand{margin-bottom:14px}.garden-login-card .login-controls{position:absolute;right:20px;top:24px;max-width:120px;flex-wrap:wrap;justify-content:flex-end;margin:0}.garden-login-card .login-controls button{min-height:36px}.garden-login-card .login-controls button[data-install-app]{font-size:10px}.garden-login-card .login-brand small{max-width:100px}.login-heading{margin-top:24px}:root[data-theme] .login-heading h2{font-size:25px!important}.garden-login-card .login-submit{min-height:48px}.garden-login-card label{font-size:13px}.garden-login-card input{min-height:48px}.login-footer{margin-top:18px}.garden-welcome{bottom:90px}.growth-milestone-list button{grid-template-columns:28px minmax(0,1fr)}.growth-milestone-list small{grid-column:2;text-align:left}.project-garden-detail>.growth-scene>.growth-depth{height:260px}}
+@media(max-width:420px){.personal-heading .hero-copy{max-width:100%}.hero-growth{opacity:.6;right:-20px;top:-15px;width:115px;height:120px}.personal-heading .day-date,.personal-heading h1{max-width:calc(100% - 75px)}.personal-heading p{position:relative}.personal-heading .actions{position:relative;z-index:1}}
+@media(prefers-reduced-motion:reduce){.growth-canopy,.garden-dew,.garden-welcome,.garden-welcome .growth-flower{animation:none!important}.growth-depth{transform:none!important;transition:none!important}.growth-scene[data-growth-stage="0"] .growth-canopy{transform:translate(52px,100px) scale(.65)}}
+@media print{.hero-growth,.garden-welcome,.growth-milestone-nodes{display:none}.growth-canopy{animation:none}}
+
+.project-work-layout{display:grid;grid-template-columns:minmax(270px,350px) minmax(0,1fr);gap:22px;align-items:start}
+.project-work-layout .project-growth-workspace{display:grid;grid-template-columns:1fr;gap:16px;margin:0;position:sticky;top:90px}
+.project-work-content{min-width:0}
+@media(max-width:1100px){.project-work-layout{grid-template-columns:1fr}.project-work-layout .project-growth-workspace{grid-template-columns:minmax(260px,1fr) minmax(160px,1fr);position:static}}
+@media(max-width:600px){.project-work-layout .project-growth-workspace{grid-template-columns:1fr}.project-work-layout{gap:18px}}

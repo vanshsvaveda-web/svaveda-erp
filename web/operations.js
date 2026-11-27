@@ -103,8 +103,8 @@ function renderProjects(){
  };
  ui.innerHTML=title(e(project.name),[project.owner?'Owner: '+project.owner:'',project.due?'Target: '+project.due:''].filter(Boolean).map(e).join(' · '),
  (projectReturnPage==='My To-dos'?btn('Back to my to-dos','nav','My To-dos'):isOnboardingProject(project)?btn('Back to lead tasks','nav','Lead Tasks'):btn('Back to Daily Operations','nav','Tasks'))+(isEmployee()?'':btn('Edit project','project',project.id)+btn('＋ Add task','task','',true)))+
- `<div class="panel project-progress"><div><strong>${completed}% complete</strong><small>${done} of ${tasks.length} visible tasks</small></div><progress max="100" value="${completed}" aria-label="Project progress"></progress></div>`+
- (project.note?`<p>${e(project.note)}</p>`:'')+`<article class="panel">${projectTabs}${content[projectTab]}</article>`;
+ `<div class="project-work-layout"><aside class="project-growth-workspace">${projectArtwork(project,true)}<div class="panel project-progress"><div><strong>${completed}% complete</strong><small>${done} of ${tasks.length} visible tasks</small></div><progress max="100" value="${completed}" aria-label="Project progress"></progress></div></aside><section class="project-work-content">`+
+ (project.note?`<p>${e(project.note)}</p>`:'')+`<article class="panel">${projectTabs}${content[projectTab]}</article></section></div>`;
 }
 function waitingSince(time){
  const hours=Math.max(0,Math.floor((Date.now()-time)/3600000));
@@ -139,6 +139,14 @@ function openProject(key){
  });
 }
 function operationsAction(act,key){
+ if(act==='ops-growth-milestone'){
+  const project=data.projects.find(p=>(p.milestones||[]).some(m=>p.id+'|'+m.id===key));
+  const item=project?.milestones.find(m=>project.id+'|'+m.id===key);
+  if(item)readRecord(e(item.title),'<p>'+e(project.name)+'</p><p>'+e(item.done?'Complete':item.due?'Due '+item.due:'No deadline')+'</p><div class="actions">'+btn('Open milestones','ops-growth-milestones',project.id,true)+'</div>');
+  return;
+ }
+ if(act==='ops-growth-milestones'){if(!data.projects.some(p=>p.id===key))return;if(modal.open)modal.close();projectSelection=key;projectTab='Milestones';page='Projects';render();return}
+
  if(act==='ops-review-tab'&&!isEmployee()){reviewFilter=key;renderReviewQueue();return}
  if(act==='ops-backup'&&isSuperAdmin()){downloadBackup();return}
  if(act==='ops-leave'){const item=(data.requests||[]).find(request=>request.id===key&&request.status==='Approved');if(item)readRecord(e(item.owner)+' · Approved leave','<p>'+e(item.start+' – '+item.end)+'</p>');return}

@@ -207,7 +207,7 @@ function render(){
  const previous=renderedWorkspacePage;
  window.SvaVedaVisuals?.cleanup();
  renderWorkspace();
- window.SvaVedaVisuals?.enhance(ui);
+ window.SvaVedaVisuals?.enhance(ui,{data,name:currentName,today:day(),authenticated:Boolean(role&&currentName)});
  ui.querySelectorAll('table').forEach(table=>{const labels=[...table.querySelectorAll('thead th')].map(th=>th.textContent.trim());if(!labels.length)return;table.classList.add('mobile-record-table');table.querySelectorAll('tbody tr').forEach(row=>[...row.cells].forEach((cell,i)=>cell.dataset.label=labels[i]||''));});
  const signOut=document.querySelector('.header-actions form[action="/api/sign-out"] button');
  if(signOut){signOut.innerHTML=workspaceIcon('logout')+'<span class="sign-out-label">Sign out</span>';signOut.setAttribute('aria-label','Sign out');}

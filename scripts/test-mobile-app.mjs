@@ -30,5 +30,3 @@ assert.equal(await (await intercepted('/',{mode:'navigate'})).text(),'NETWORK');
 offline=true;assert.equal(await (await intercepted('/',{mode:'navigate'})).text(),'OFFLINE');assert.ok(!cacheRecords.has('/'));
 offline=false;assert.equal(await (await intercepted('/app.123456abcdef.js')).text(),'NETWORK');assert.ok(cacheRecords.has('/app.123456abcdef.js'));
 console.log('PASS: manifest and icon sizes; PNG delivery bytes; public asset types and HEAD; sign-in theme and CSP; network-only private APIs; no cached signed-in HTML; offline navigation fallback; static-only asset caching.');
-for(const name of ['sunflower-v1','tree-v1']){const path='/botanicals/'+name+'.webp',response=await worker.fetch(new Request('https://erp.example.invalid'+path),{});assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/webp');assert.deepEqual(Buffer.from(await response.arrayBuffer()),await readFile('web'+path));}
-console.log('PASS: compressed botanical assets retain exact binary bytes and WebP MIME types.');

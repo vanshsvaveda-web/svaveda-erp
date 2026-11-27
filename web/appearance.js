@@ -7,7 +7,7 @@
  function apply(){
   const dark=preference==='dark'||preference==='system'&&system.matches;
   root.dataset.theme=dark?'dark':'light';root.style.colorScheme=dark?'dark':'light';
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content',dark?'#151a18':'#fbf5eb');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content',dark?'#151a18':'#f4f3eb');
   document.querySelectorAll('[data-theme-toggle]').forEach(button=>{
    const label=preference==='system'?'System':dark?'Dark':'Light';
    button.innerHTML=(preference==='system'?'◐':dark?'☾':'☀')+'<span class="appearance-label">'+label+'</span>';
